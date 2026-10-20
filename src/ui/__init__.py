@@ -45,6 +45,10 @@ from src.ui.components import (
     render_beginner_tooltip,
     render_relevance_badge,
 )
+from src.ui.action_center_ui import (
+    render_action_center_dashboard,
+    render_keyword_decision_helper,
+)
 from src.ui.wizard_ui import (
     render_guided_keyword_wizard,
     get_or_create_wizard_state,
@@ -124,6 +128,8 @@ __all__ = [
     "render_relevance_badge",
     "render_guided_keyword_wizard",
     "get_or_create_wizard_state",
+    "render_action_center_dashboard",
+    "render_keyword_decision_helper",
 ]
 
 

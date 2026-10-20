@@ -686,6 +686,14 @@ def render_step_6_choose_best_fit(state: WizardState) -> None:
                 current_choice = kw_text
                 st.rerun()
 
+    # Phase 31: Keyword Decision Helper for Step 6
+    step6_chan = channel_manager.get_channel(state.selected_channel_id)
+    if step6_chan and state.suggestions:
+        step6_kws = [s["keyword"] for s in state.suggestions[:4]]
+        with st.expander("⚖️ Keyword Decision Helper (Channel Alignment & Comparison)", expanded=False):
+            from src.ui.action_center_ui import render_keyword_decision_helper
+            render_keyword_decision_helper(step6_kws, step6_chan)
+
     # Step Navigation Controls
     col_nav1, col_nav2 = st.columns([1, 1])
     with col_nav1:

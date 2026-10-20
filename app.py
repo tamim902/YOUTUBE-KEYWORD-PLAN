@@ -272,6 +272,8 @@ try:
         get_current_interface_mode,
         set_interface_mode,
         render_guided_keyword_wizard,
+        render_action_center_dashboard,
+        render_keyword_decision_helper,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -332,6 +334,8 @@ except ImportError:
         get_current_interface_mode,
         set_interface_mode,
         render_guided_keyword_wizard,
+        render_action_center_dashboard,
+        render_keyword_decision_helper,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -1351,8 +1355,9 @@ def render_page_dashboard(is_ready: bool, recent_searches: List[Dict[str, Any]])
         cached_queries_count=db_stats.get("total_cached_queries", 0),
     )
 
-    # Smart Onboarding, Next-Best-Action Workflow Assistant & Active Progress
+    # Smart Onboarding, Personal YouTube SEO Coach & Action Center
     render_onboarding_guide(is_ready)
+    render_action_center_dashboard(is_ready)
     render_next_best_action_banner(is_ready)
     render_workflow_progress_checklist(is_ready=is_ready)
     render_contextual_help("keyword_discovery")
@@ -2139,6 +2144,14 @@ def render_page_results() -> None:
         "*(Note: Autocomplete suggestion frequency or position is strictly research discovery data, NOT search volume or ranking competition. "
         "Relevance scores reflect transparent lexical rules, not ranking guarantees.)*"
     )
+
+    # Phase 31: Keyword Decision Helper (Channel-Specific Comparison)
+    active_cid = int(st.session_state.get("active_channel_id", 1))
+    active_chan = channel_manager.get_channel(active_cid)
+    if active_chan and all_keywords:
+        top_kws = [k.keyword for k in sorted(all_keywords, key=lambda x: getattr(x, "relevance_score", 0.0), reverse=True)[:4]]
+        with st.expander("⚖️ Keyword Decision Helper (Channel Alignment & Comparison)", expanded=False):
+            render_keyword_decision_helper(top_kws, active_chan)
 
     # 3. Multi-Dimensional Filter Toolbar
     with st.expander("🔍 Filter, Search & Sort Keywords", expanded=True):

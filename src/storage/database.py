@@ -112,6 +112,7 @@ class DatabaseManager:
         self._ensure_phase24_tables()
         self._ensure_phase25_tables()
         self._ensure_phase26_tables()
+        self._ensure_phase31_tables()
 
     def _ensure_phase9_columns(self) -> None:
         """Ensure Phase 9 columns exist for databases migrated prior to Phase 9."""
@@ -1277,6 +1278,39 @@ class DatabaseManager:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_comp_query ON competitor_video_records(matching_query);")
 
+    def _ensure_phase31_tables(self) -> None:
+        """Ensure Phase 31 tables exist for Personal YouTube SEO Coach & Action Center."""
+        if not self.db_path.exists():
+            return
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS action_center_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    task_key TEXT UNIQUE NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    channel_name TEXT NOT NULL,
+                    task_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    short_summary TEXT NOT NULL DEFAULT '',
+                    priority TEXT NOT NULL DEFAULT 'normal',
+                    target_page TEXT NOT NULL,
+                    context_json TEXT NOT NULL DEFAULT '{}',
+                    what_to_do TEXT NOT NULL,
+                    why_it_matters TEXT NOT NULL,
+                    how_to_do_it_json TEXT NOT NULL DEFAULT '[]',
+                    what_to_check_json TEXT NOT NULL DEFAULT '[]',
+                    what_comes_next TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_action_task_chan ON action_center_tasks(channel_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_action_task_status ON action_center_tasks(status);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_action_task_key ON action_center_tasks(task_key);")
+
 
     def migrate_db(self, conn: Optional[sqlite3.Connection] = None) -> None:
         """Run all pending schema migrations."""
@@ -1292,6 +1326,7 @@ class DatabaseManager:
         self._ensure_phase24_tables()
         self._ensure_phase25_tables()
         self._ensure_phase26_tables()
+        self._ensure_phase31_tables()
 
 
     # --------------------------------------------------------------------------
@@ -6642,6 +6677,191 @@ class DatabaseManager:
                 for r in rows
             ]
 
+
+    # --------------------------------------------------------------------------
+    # Phase 31: Personal YouTube SEO Coach & Action Center
+    # --------------------------------------------------------------------------
+
+    def save_action_task(self, task: Dict[str, Any]) -> int:
+        """Save or update an action task in SQLite. Does not overwrite dismissed/completed status unless specified."""
+        self._ensure_phase31_tables()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            existing = conn.execute(
+                "SELECT id, status FROM action_center_tasks WHERE task_key = ?;",
+                (task["task_key"],),
+            ).fetchone()
+
+            how_json = json.dumps(task.get("how_to_do_it", [])) if isinstance(task.get("how_to_do_it"), list) else task.get("how_to_do_it_json", "[]")
+            check_json = json.dumps(task.get("what_to_check", [])) if isinstance(task.get("what_to_check"), list) else task.get("what_to_check_json", "[]")
+            ctx_json = json.dumps(task.get("context_data", {})) if isinstance(task.get("context_data"), dict) else task.get("context_json", "{}")
+
+            if existing:
+                task_id, current_status = existing
+                # If already completed or dismissed, preserve unless explicit change requested
+                new_status = task.get("status", current_status)
+                if current_status in ("completed", "dismissed") and task.get("status") == "pending":
+                    new_status = current_status
+
+                conn.execute(
+                    """
+                    UPDATE action_center_tasks
+                    SET channel_name = ?, task_type = ?, title = ?, short_summary = ?,
+                        priority = ?, target_page = ?, context_json = ?, what_to_do = ?,
+                        why_it_matters = ?, how_to_do_it_json = ?, what_to_check_json = ?,
+                        what_comes_next = ?, status = ?, updated_at = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        task.get("channel_name", ""),
+                        task.get("task_type", ""),
+                        task.get("title", ""),
+                        task.get("short_summary", ""),
+                        task.get("priority", "normal"),
+                        task.get("target_page", ""),
+                        ctx_json,
+                        task.get("what_to_do", ""),
+                        task.get("why_it_matters", ""),
+                        how_json,
+                        check_json,
+                        task.get("what_comes_next", ""),
+                        new_status,
+                        now,
+                        task_id,
+                    ),
+                )
+                return task_id
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO action_center_tasks (
+                        task_key, channel_id, channel_name, task_type, title,
+                        short_summary, priority, target_page, context_json,
+                        what_to_do, why_it_matters, how_to_do_it_json,
+                        what_to_check_json, what_comes_next, status,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        task["task_key"],
+                        int(task["channel_id"]),
+                        task.get("channel_name", ""),
+                        task.get("task_type", ""),
+                        task.get("title", ""),
+                        task.get("short_summary", ""),
+                        task.get("priority", "normal"),
+                        task.get("target_page", ""),
+                        ctx_json,
+                        task.get("what_to_do", ""),
+                        task.get("why_it_matters", ""),
+                        how_json,
+                        check_json,
+                        task.get("what_comes_next", ""),
+                        task.get("status", "pending"),
+                        task.get("created_at", now),
+                        now,
+                    ),
+                )
+                return cur.lastrowid
+
+    def get_action_tasks(
+        self,
+        channel_id: Optional[int] = None,
+        status: Optional[str] = "pending",
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve action tasks filtered by channel and status."""
+        self._ensure_phase31_tables()
+        with self.get_connection() as conn:
+            query = "SELECT * FROM action_center_tasks WHERE 1=1"
+            params: List[Any] = []
+            if channel_id is not None:
+                query += " AND channel_id = ?"
+                params.append(channel_id)
+            if status is not None:
+                query += " AND status = ?"
+                params.append(status)
+            query += " ORDER BY CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END, id DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, params).fetchall()
+            cols = [col[0] for col in conn.execute("SELECT * FROM action_center_tasks LIMIT 0;").description]
+            result = []
+            for r in rows:
+                row_dict = dict(zip(cols, r))
+                row_dict["how_to_do_it"] = json.loads(row_dict.get("how_to_do_it_json") or "[]")
+                row_dict["what_to_check"] = json.loads(row_dict.get("what_to_check_json") or "[]")
+                row_dict["context_data"] = json.loads(row_dict.get("context_json") or "{}")
+                result.append(row_dict)
+            return result
+
+    def update_action_task_status(self, task_key: str, status: str) -> bool:
+        """Update the status of an action task (e.g. 'completed', 'dismissed', 'pending')."""
+        self._ensure_phase31_tables()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "UPDATE action_center_tasks SET status = ?, updated_at = ? WHERE task_key = ?;",
+                (status, now, task_key),
+            )
+            return cur.rowcount > 0
+
+    def get_channel_progress_counts(self, channel_id: int) -> Dict[str, int]:
+        """Compute real, verified project counts for a channel from SQLite records."""
+        self._ensure_phase31_tables()
+        with self.get_connection() as conn:
+            # 1. Total saved research sessions
+            searches_count = conn.execute("SELECT COUNT(*) FROM searches;").fetchone()[0]
+
+            # 2. Topics awaiting review for this channel
+            ideas_count = conn.execute(
+                "SELECT COUNT(*) FROM daily_idea_items WHERE channel_id = ? AND is_saved = 0 AND is_rejected = 0;",
+                (channel_id,),
+            ).fetchone()[0]
+            topics_count = conn.execute(
+                "SELECT COUNT(*) FROM prioritized_topics WHERE channel_id = ? AND user_status = 'Suggested';",
+                (channel_id,),
+            ).fetchone()[0]
+            topics_awaiting = ideas_count + topics_count
+
+            # 3. Content briefs completed
+            briefs_count = conn.execute(
+                "SELECT COUNT(*) FROM content_brief_documents WHERE channel_id = ?;",
+                (channel_id,),
+            ).fetchone()[0]
+
+            # 4. Videos in production
+            proj_count = conn.execute(
+                "SELECT COUNT(*) FROM production_workflow_projects WHERE channel_id = ? AND is_cancelled = 0 AND current_stage != 'Published';",
+                (channel_id,),
+            ).fetchone()[0]
+            cal_count = conn.execute(
+                "SELECT COUNT(*) FROM strategy_calendar_items WHERE channel_id = ? AND production_status IN ('Planned', 'In Production', 'Ready for Recording');",
+                (channel_id,),
+            ).fetchone()[0]
+            in_production = max(proj_count, cal_count)
+
+            # 5. SEO audits requiring attention (score < 80)
+            audits_cur = conn.execute(
+                "SELECT scores_json FROM video_seo_audits WHERE channel_id = ?;",
+                (channel_id,),
+            ).fetchall()
+            audits_needing_attention = 0
+            for a in audits_cur:
+                try:
+                    s = json.loads(a[0] or "{}")
+                    if s.get("overall_score", 100) < 80:
+                        audits_needing_attention += 1
+                except Exception:
+                    pass
+
+            return {
+                "saved_searches": searches_count,
+                "topics_awaiting_review": topics_awaiting,
+                "briefs_completed": briefs_count,
+                "videos_in_production": in_production,
+                "audits_requiring_attention": audits_needing_attention,
+            }
 
     # --------------------------------------------------------------------------
     # Database Diagnostics & Backup Facilities
