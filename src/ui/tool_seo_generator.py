@@ -1,12 +1,13 @@
-"""Tool 4: SEO Title, Description & Tags Generator — Simplified Core Workflow.
+"""Tool 5: SEO Generator — Upgraded Core Workflow.
 
 Prepares production-ready, YouTube-compliant video metadata:
 - Multiple title options with character counts (sweet spot 50-65 chars)
-- One primary recommended title with clear explanation
-- Structured, human-readable video description draft
-- Relevant tag suggestions & hashtags (no fake search volume claims)
-- Content alignment & SEO readiness checklist
-- Independent copy buttons + 1-click "Copy Entire Package"
+- Structural title patterns generated via SmartKeywordPatternGenerator frameworks
+- One primary recommended title with clear strategic explanation
+- Natural, readable 8-part video description draft
+- Relevant tag suggestions honestly labeled without fake volume claims
+- Optional hashtags & content alignment checklist
+- Independent editing/copying and one-click "Download Complete Package"
 """
 
 from __future__ import annotations
@@ -16,10 +17,12 @@ from typing import Any, Dict, List, Optional
 import streamlit as st
 
 from src.intelligence.content_factory import content_factory_engine, VideoFormat, VideoPurpose
+from src.patterns.generator import SmartKeywordPatternGenerator
+from src.patterns.models import PatternCategory, PatternConfig, PatternLanguage
 
 
 def render_seo_generator_tool() -> None:
-    """Render the simplified Tool 4: SEO Title, Description & Tags Generator."""
+    """Render the upgraded Tool 5: SEO Generator."""
     st.markdown(
         """
         <div style="margin-bottom: 20px;">
@@ -41,7 +44,7 @@ def render_seo_generator_tool() -> None:
                     border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.85rem; color: #475569;">
             📌 <b>SEO Reality Notice:</b> High-quality titles, descriptions, and tags help YouTube's algorithm index and categorize your video. 
             However, metadata alone does <b>not</b> guarantee views or rankings; viewer retention, click-through rate (CTR), and overall audience satisfaction 
-            remain YouTube's dominant ranking signals.
+            remain YouTube's dominant ranking signals. Tags are labeled <b>"Relevant tag suggestions"</b> rather than high volume.
         </div>
         """,
         unsafe_allow_html=True,
@@ -127,6 +130,7 @@ def render_seo_generator_tool() -> None:
             format_type = VideoFormat.SHORTS if "Shorts" in format_choice else VideoFormat.LONG_FORM
             purpose_type = VideoPurpose.TUTORIAL if "Beginner" in tone_choice else VideoPurpose.REVIEW
 
+            # Generate base package
             pkg = content_factory_engine.generate_package(
                 channel_id=1,
                 topic=topic_summary.strip() or f"{clean_main.title()} Complete Guide",
@@ -136,6 +140,24 @@ def render_seo_generator_tool() -> None:
                 format_type=format_type,
                 purpose_type=purpose_type,
             )
+
+            # Generate pattern-based title variants using Pattern Generator
+            pat_gen = SmartKeywordPatternGenerator()
+            pat_cfg = PatternConfig(
+                seeds=[clean_main],
+                categories=[
+                    PatternCategory.BEST_BUYING,
+                    PatternCategory.HOW_TO,
+                    PatternCategory.REVIEWS,
+                    PatternCategory.COMPARISON,
+                ],
+                language_mode=PatternLanguage.EN,
+                include_current_year=True,
+                max_generated=8,
+            )
+            pattern_titles = pat_gen.generate(pat_cfg)
+            st.session_state["seo_pattern_titles"] = [p.keyword for p in pattern_titles]
+
             st.session_state.seo_generated_pkg = pkg
             st.rerun()
 
@@ -146,25 +168,41 @@ def render_seo_generator_tool() -> None:
         st.markdown("### 📦 Generated SEO Package")
 
         # 1. Recommended Title & Alternative Candidates
-        st.markdown("#### 1. Title Options")
+        st.markdown("#### 1. Title Options & Pattern Variations")
         st.caption("Click-worthy title angles crafted for 50–65 characters (optimal mobile & desktop display):")
 
         # Primary recommended title
         best_title = pkg.selected_title or (pkg.title_options[0].title if pkg.title_options else main_kw.title())
-        st.success(f"**Recommended Primary Title:**\n\n### `{best_title}`\n\n*Length: {len(best_title)} characters | High CTR hook with front-loaded primary keyword.*")
+        st.success(
+            f"**Recommended Primary Title:**\n\n"
+            f"### `{best_title}`\n\n"
+            f"*Length: {len(best_title)} characters | High CTR hook with front-loaded primary keyword.*"
+        )
 
-        with st.expander("👁️ View 4 Alternative Title Candidates", expanded=False):
+        with st.expander("👁️ View Alternative & Pattern-Based Title Options", expanded=True):
+            st.markdown("###### Structured Creative Angles:")
             for idx, cand in enumerate(pkg.title_options):
                 c_title_col, c_char_col = st.columns([4, 1])
                 with c_title_col:
-                    st.markdown(f"**Option {idx+1}:** `{cand.title}`")
-                    st.caption(f"Angle: {cand.angle_type.title()} | {cand.benefit_promise}")
+                    st.markdown(f"**Angle {idx+1} ({cand.angle_type.title()}):** `{cand.title}`")
+                    st.caption(f"Promise: {cand.benefit_promise}")
                 with c_char_col:
                     st.caption(f"{len(cand.title)} chars")
 
+            pat_titles = st.session_state.get("seo_pattern_titles", [])
+            if pat_titles:
+                st.markdown("<div style='margin: 10px 0; border-top: 1px dashed #E2E8F0;'></div>", unsafe_allow_html=True)
+                st.markdown("###### Pattern-Framework Title Candidates:")
+                for p_idx, p_title in enumerate(pat_titles[:4]):
+                    c_pt_col, c_pc_col = st.columns([4, 1])
+                    with c_pt_col:
+                        st.markdown(f"- 🧩 `{p_title}`")
+                    with c_pc_col:
+                        st.caption(f"{len(p_title)} chars")
+
         # 2. Video Description
         st.markdown("#### 2. YouTube Description Draft")
-        st.caption("Structured 8-part description draft with opening hook, keyword placement, and timestamps:")
+        st.caption("Structured 8-part description draft with opening hook, keyword placement, outline, and links:")
         desc_text = st.text_area(
             "Editable Video Description",
             value=pkg.description_text,
@@ -173,8 +211,8 @@ def render_seo_generator_tool() -> None:
         )
 
         # 3. Tags & Hashtags
-        st.markdown("#### 3. Tags & Hashtags")
-        st.caption("Relevant tag suggestions extracted from topic semantics (copy directly to YouTube Studio tags box):")
+        st.markdown("#### 3. Relevant Tag Suggestions & Hashtags")
+        st.caption("Extracted from topic semantics (copy directly to YouTube Studio tags box; zero fabricated volume metrics):")
 
         # Comma separated tag string
         tags_str = ", ".join(pkg.tags[:15]) if pkg.tags else f"{main_kw}, {main_kw} tutorial, youtube seo"

@@ -1,12 +1,15 @@
-"""Tool 1: Keyword Research — Simplified Core Workflow.
+"""Tool 1: Keyword Research — Upgraded Core Workflow with Integrated Pattern Generator.
 
 Provides a clean, fast, beginner-friendly interface for YouTube keyword discovery:
-- YouTube Autocomplete suggestions
-- Alphabet expansion (A-Z) & question-based variations
-- Honest search volume labeling ("Volume unavailable" / proxy)
+- Live YouTube Autocomplete suggestions
+- Alphabet-based expansion (A-Z)
+- Question-based patterns (who, what, how, why, can)
+- Preposition & modifier variations (for, with, without, best, review, vs)
 - Deterministic search intent & relevance classification
-- Searchable table with sort, filter, copy, and formula-safe CSV export
-- 1-click handoff to Tool 4 (SEO Generator)
+- Clean results table: Keyword | Volume | Competition | Intent | Source | Status
+- Honest volume labeling ("Unavailable" / proxy) with zero fabricated numbers
+- Integrated Pattern Generator for candidate video angles across 8 frameworks
+- Cross-tool handoffs to Video Research, Competitor Research, 60-Day Opportunities, and SEO Generator
 """
 
 from __future__ import annotations
@@ -21,14 +24,21 @@ from src.classifier.service import default_classifier
 from src.config import config
 from src.intelligence.scoring import default_scorer
 from src.models.keyword import AutocompleteResult, KeywordItem
+from src.patterns.generator import SmartKeywordPatternGenerator
+from src.patterns.models import PatternCategory, PatternConfig, PatternLanguage
 from src.providers.youtube import YouTubeAutocompleteProvider
 from src.storage.database import db_manager
 from src.storage.export import ExportService, sanitize_dataframe_for_export
-from src.ui.components import TOOL_SEO_GENERATOR
+from src.ui.components import (
+    TOOL_VIDEO_RESEARCH,
+    TOOL_COMPETITOR_RESEARCH,
+    TOOL_60_DAY_OPPORTUNITIES,
+    TOOL_SEO_GENERATOR,
+)
 
 
 def render_keyword_research_tool() -> None:
-    """Render the simplified Tool 1: Keyword Research."""
+    """Render the upgraded Tool 1: Keyword Research with Integrated Pattern Generator."""
     st.markdown(
         """
         <div style="margin-bottom: 20px;">
@@ -50,7 +60,7 @@ def render_keyword_research_tool() -> None:
                     border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.85rem; color: #475569;">
             💡 <b>Data Transparency Notice:</b> Results represent real viewer search queries actively suggested by YouTube's autocomplete engine. 
             YouTube does not provide official public monthly search volume; where third-party volume is not connected, it is honestly labeled 
-            <b>"Volume unavailable"</b> rather than fabricated. Relevance scores indicate topic alignment, not guaranteed rankings.
+            <b>"Unavailable"</b> rather than fabricated. Relevance scores indicate topic alignment, not guaranteed rankings.
         </div>
         """,
         unsafe_allow_html=True,
@@ -63,6 +73,8 @@ def render_keyword_research_tool() -> None:
         st.session_state.kr_last_query = ""
     if "kr_execution_time" not in st.session_state:
         st.session_state.kr_execution_time = 0.0
+    if "kr_patterns" not in st.session_state:
+        st.session_state.kr_patterns = []
 
     # Main Input Form
     with st.container():
@@ -81,13 +93,13 @@ def render_keyword_research_tool() -> None:
             btn_search = st.button("🔍 Find Keywords", type="primary", use_container_width=True, key="kr_submit_btn")
 
         # Compact Settings Expander
-        with st.expander("⚙️ Search & Region Settings (Optional)", expanded=False):
-            col_s1, col_s2, col_s3 = st.columns(3)
+        with st.expander("⚙️ Search, Alphabet & Expansion Settings (Optional)", expanded=False):
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
             with col_s1:
                 country_opts = list(config.supported_countries.keys())
                 def_country_idx = country_opts.index("US") if "US" in country_opts else 0
                 selected_country = st.selectbox(
-                    "Target Country / Region",
+                    "Target Region / Country",
                     options=country_opts,
                     format_func=lambda c: f"{config.supported_countries.get(c, c)} ({c})",
                     index=def_country_idx,
@@ -104,6 +116,13 @@ def render_keyword_research_tool() -> None:
                     key="kr_lang_select",
                 )
             with col_s3:
+                enable_questions = st.checkbox(
+                    "Include Question & Preposition Variations",
+                    value=True,
+                    help="Automatically queries question prefixes (how, why, what, best, for, vs) to expand search intent.",
+                    key="kr_questions_check",
+                )
+            with col_s4:
                 enable_alphabet = st.checkbox(
                     "Include Alphabet Expansion (A-Z)",
                     value=False,
@@ -129,21 +148,27 @@ def render_keyword_research_tool() -> None:
             )
             all_suggestions.extend(direct_suggs)
 
-            # 2. Question variations (who, what, how, why, best)
-            question_prefixes = ["how to", "best", "why", "what is"]
-            for q_pre in question_prefixes:
-                q_query = f"{q_pre} {clean_q}"
-                q_suggs = provider.get_suggestions(
-                    q_query,
-                    language=selected_lang,
-                    country=selected_country,
-                    use_cache=True,
-                )
-                all_suggestions.extend(q_suggs[:3])
+            # 2. Question & Preposition Variations (how, best, why, what is, for, vs)
+            if enable_questions:
+                modifier_prefixes = [
+                    "how to", "best", "why", "what is",
+                    f"{clean_q} for beginners",
+                    f"{clean_q} tutorial",
+                    f"{clean_q} review",
+                    f"{clean_q} vs",
+                ]
+                for mod_query in modifier_prefixes:
+                    q_suggs = provider.get_suggestions(
+                        mod_query if not mod_query.startswith(clean_q) else f"{mod_query}",
+                        language=selected_lang,
+                        country=selected_country,
+                        use_cache=True,
+                    )
+                    all_suggestions.extend(q_suggs[:3])
 
-            # 3. Alphabet expansion if selected (A-E sample for speed)
+            # 3. Alphabet expansion if selected
             if enable_alphabet:
-                letters = ["a", "b", "c", "d", "e"]
+                letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "p", "s", "t", "w"]
                 for char in letters:
                     char_query = f"{clean_q} {char}"
                     char_suggs = provider.get_suggestions(
@@ -166,18 +191,20 @@ def render_keyword_research_tool() -> None:
                     seen.add(k_norm)
                     cls = default_classifier.classify(s.keyword)
                     score_res = default_scorer.score(s.keyword, clean_q, cls)
+                    words_count = len(s.keyword.split())
+                    comp_label = "Low (Long-tail)" if words_count >= 4 else "Moderate" if words_count == 3 else "High (Broad)"
                     unique_results.append({
-                        "keyword": s.keyword,
-                        "intent": cls.primary_intent.value,
-                        "relevance": round(score_res.total_score, 1),
-                        "volume": "Volume unavailable",  # Truthful labeling
-                        "difficulty": "Moderate" if len(s.keyword.split()) <= 2 else "Low (Long-tail)",
-                        "source": "YouTube Autocomplete",
-                        "status": "Verified",
+                        "Keyword": s.keyword,
+                        "Volume": "Unavailable",  # Truthful labeling
+                        "Competition": comp_label,
+                        "Intent": cls.primary_intent.value,
+                        "Source": "YouTube Autocomplete",
+                        "Status": "Active",
+                        "_relevance_score": round(score_res.total_score, 1),
                     })
 
             # Sort by relevance score descending
-            unique_results.sort(key=lambda x: x["relevance"], reverse=True)
+            unique_results.sort(key=lambda x: x["_relevance_score"], reverse=True)
             st.session_state.kr_results = unique_results
 
             # Persist search in SQLite
@@ -194,16 +221,16 @@ def render_keyword_research_tool() -> None:
                     )
                     kw_items = [
                         KeywordItem(
-                            keyword=r["keyword"],
+                            keyword=r["Keyword"],
                             seed_keyword=clean_q,
-                            source=r["source"],
+                            source=r["Source"],
                             language=selected_lang,
                             country=selected_country,
                         )
                         for r in unique_results
                     ]
                     db_manager.save_keywords(search_id, kw_items)
-                except Exception as e:
+                except Exception:
                     pass  # Non-blocking persistence
 
             st.rerun()
@@ -217,10 +244,10 @@ def render_keyword_research_tool() -> None:
         with m1:
             st.metric("Total Keywords Discovered", len(results))
         with m2:
-            top_intent = results[0]["intent"] if results else "N/A"
+            top_intent = results[0]["Intent"] if results else "N/A"
             st.metric("Top Search Intent", top_intent)
         with m3:
-            st.metric("Search Volume Data", "Volume unavailable", help="Official YouTube search volumes are not public. Real autocomplete signals are shown.")
+            st.metric("Search Volume Data", "Unavailable", help="Official YouTube search volumes are not public. Real autocomplete query signals are shown.")
         with m4:
             st.metric("Retrieval Speed", f"{st.session_state.kr_execution_time:.2f}s")
 
@@ -229,7 +256,7 @@ def render_keyword_research_tool() -> None:
         with c_f1:
             table_search = st.text_input("🔍 Filter keywords", placeholder="Type to filter results...", key="kr_table_search")
         with c_f2:
-            intents = ["All Intents"] + sorted(list(set(r["intent"] for r in results)))
+            intents = ["All Intents"] + sorted(list(set(r["Intent"] for r in results)))
             selected_intent = st.selectbox("Filter Intent", intents, key="kr_intent_filter")
         with c_f3:
             relevance_filter = st.selectbox(
@@ -241,42 +268,40 @@ def render_keyword_research_tool() -> None:
         # Apply filtering
         filtered_results = list(results)
         if table_search.strip():
-            filtered_results = [r for r in filtered_results if table_search.lower().strip() in r["keyword"].lower()]
+            filtered_results = [r for r in filtered_results if table_search.lower().strip() in r["Keyword"].lower()]
         if selected_intent != "All Intents":
-            filtered_results = [r for r in filtered_results if r["intent"] == selected_intent]
+            filtered_results = [r for r in filtered_results if r["Intent"] == selected_intent]
         if relevance_filter == "High Relevance (80+)":
-            filtered_results = [r for r in filtered_results if r["relevance"] >= 80]
+            filtered_results = [r for r in filtered_results if r["_relevance_score"] >= 80]
         elif relevance_filter == "Medium+ (60+)":
-            filtered_results = [r for r in filtered_results if r["relevance"] >= 60]
+            filtered_results = [r for r in filtered_results if r["_relevance_score"] >= 60]
 
-        # Results Table
-        st.caption(f"Showing {len(filtered_results)} of {len(results)} discovered keywords:")
+        # Results Table exactly matching Keyword | Volume | Competition | Intent | Source | Status
+        st.caption(f"Showing **{len(filtered_results)}** of {len(results)} discovered keywords:")
         df_display = pd.DataFrame(filtered_results)
         
-        # Display polished dataframe
         st.dataframe(
             df_display[[
-                "keyword", "intent", "relevance", "volume", "difficulty", "source"
+                "Keyword", "Volume", "Competition", "Intent", "Source", "Status"
             ]],
             column_config={
-                "keyword": st.column_config.TextColumn("Keyword Phrase", width="large"),
-                "intent": st.column_config.TextColumn("Search Intent", width="medium"),
-                "relevance": st.column_config.ProgressColumn("Relevance Score", min_value=0, max_value=100, format="%d pts"),
-                "volume": st.column_config.TextColumn("Monthly Volume", width="medium"),
-                "difficulty": st.column_config.TextColumn("Competition Estimate", width="medium"),
-                "source": st.column_config.TextColumn("Data Source", width="medium"),
+                "Keyword": st.column_config.TextColumn("Keyword", width="large"),
+                "Volume": st.column_config.TextColumn("Volume", width="medium"),
+                "Competition": st.column_config.TextColumn("Competition", width="medium"),
+                "Intent": st.column_config.TextColumn("Intent", width="medium"),
+                "Source": st.column_config.TextColumn("Source", width="medium"),
+                "Status": st.column_config.TextColumn("Status", width="small"),
             },
             hide_index=True,
             use_container_width=True,
         )
 
         # Action Buttons Row
-        st.markdown("#### 🛠️ Keyword Actions")
-        c_act1, c_act2, c_act3, c_act4 = st.columns([1.5, 1.5, 1.5, 2])
+        st.markdown("#### 🛠️ Keyword Actions & Cross-Tool Handoffs")
+        c_act1, c_act2, c_act3 = st.columns([1.5, 1.5, 1.5])
 
         with c_act1:
-            # Copy all filtered keywords
-            all_kw_text = "\n".join(r["keyword"] for r in filtered_results)
+            all_kw_text = "\n".join(r["Keyword"] for r in filtered_results)
             st.download_button(
                 label=f"📋 Export Keywords ({len(filtered_results)})",
                 data=all_kw_text,
@@ -287,9 +312,8 @@ def render_keyword_research_tool() -> None:
             )
 
         with c_act2:
-            # Formula-safe CSV export
             export_svc = ExportService()
-            clean_df = pd.DataFrame(filtered_results)
+            clean_df = pd.DataFrame(filtered_results).drop(columns=["_relevance_score"], errors="ignore")
             csv_bytes = export_svc.export_csv(clean_df, sanitize_formulas=True)
             st.download_button(
                 label="📥 Download CSV",
@@ -305,13 +329,34 @@ def render_keyword_research_tool() -> None:
                 st.session_state.kr_results = []
                 st.rerun()
 
-        with c_act4:
-            # One-click jump to Tool 4 (SEO Generator)
-            if filtered_results:
-                top_kw = filtered_results[0]["keyword"]
-                if st.button(f"✨ Send '{top_kw[:20]}...' to SEO Generator", type="primary", use_container_width=True, key="kr_send_seo_btn"):
+        # Cross-Tool Handoff Row
+        if filtered_results:
+            top_kw = filtered_results[0]["Keyword"]
+            st.caption(f"Send primary keyword **'{top_kw}'** to other tools:")
+            c_snd1, c_snd2, c_snd3, c_snd4 = st.columns(4)
+
+            with c_snd1:
+                if st.button("🎥 Send to Video Research", use_container_width=True, key="kr_send_vr_btn"):
+                    st.session_state.vr_target_keyword = top_kw
+                    st.session_state.current_page = TOOL_VIDEO_RESEARCH
+                    st.rerun()
+
+            with c_snd2:
+                if st.button("🎯 Send to Competitor Research", use_container_width=True, key="kr_send_cr_btn"):
+                    st.session_state.cr_last_query = top_kw
+                    st.session_state.current_page = TOOL_COMPETITOR_RESEARCH
+                    st.rerun()
+
+            with c_snd3:
+                if st.button("⚡ Send to 60-Day Gap Finder", use_container_width=True, key="kr_send_opp_btn"):
+                    st.session_state.opp_last_seed = top_kw
+                    st.session_state.current_page = TOOL_60_DAY_OPPORTUNITIES
+                    st.rerun()
+
+            with c_snd4:
+                if st.button("✨ Send to SEO Generator", type="primary", use_container_width=True, key="kr_send_seo_btn"):
                     st.session_state.seo_main_keyword = top_kw
-                    st.session_state.seo_secondary_keywords = ", ".join(r["keyword"] for r in filtered_results[1:5])
+                    st.session_state.seo_secondary_keywords = ", ".join(r["Keyword"] for r in filtered_results[1:5])
                     st.session_state.current_page = TOOL_SEO_GENERATOR
                     st.rerun()
 
@@ -319,3 +364,135 @@ def render_keyword_research_tool() -> None:
         st.warning(f"No autocomplete suggestions found for '{st.session_state.kr_last_query}'. Try a shorter or broader seed phrase.")
     else:
         st.info("👆 Enter a seed keyword above to start discovering high-intent YouTube search queries.")
+
+    st.write("")
+    st.markdown("---")
+
+    # ==============================================================================
+    # RESTORED KEYWORD PATTERN GENERATOR (INTEGRATED INTO KEYWORD RESEARCH)
+    # ==============================================================================
+    st.markdown("### 🧩 Keyword Pattern Generator (Candidate Video Ideas)")
+    st.markdown(
+        """
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #7C3AED; 
+                    border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; color: #475569;">
+            💡 <b>Candidate Ideas Notice:</b> Generated patterns are candidate keyword ideas produced across 8 proven creator frameworks 
+            (Listicles, Best & Buying, Reviews, How-To, Comparisons, Questions, Audience, Time Modifiers). 
+            They are structural hypotheses for content planning, <b>not</b> verified historical search volume.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    pat_seed_default = st.session_state.kr_last_query or "mechanical keyboard"
+
+    with st.expander("🛠️ Configure & Generate Keyword Patterns", expanded=(len(st.session_state.kr_patterns) == 0)):
+        c_pat1, c_pat2 = st.columns(2)
+        with c_pat1:
+            pat_seed = st.text_input(
+                "Seed Topic for Patterns",
+                value=pat_seed_default,
+                placeholder="e.g. python, mechanical keyboards, photography",
+                key="kr_pat_seed_input",
+                help="The core topic or noun to plug into creator framework patterns.",
+            )
+            pat_alternatives = st.text_input(
+                "Comparison Alternatives / Competitors (Optional)",
+                placeholder="e.g. keychron, epomaker, ducky",
+                key="kr_pat_alts_input",
+                help="Optional competitor brands or alternatives for head-to-head comparison patterns.",
+            )
+        with c_pat2:
+            cat_display_names = {
+                PatternCategory.BEST_BUYING: "Best & Buying Intent (Best [kw], Top [kw])",
+                PatternCategory.REVIEWS: "Reviews & Feedback ([kw] review, Is [kw] worth it?)",
+                PatternCategory.HOW_TO: "How-To & Tutorials (How to [kw], [kw] tutorial)",
+                PatternCategory.COMPARISON: "Comparison ([kw] vs [alt], [kw] alternatives)",
+                PatternCategory.QUESTIONS: "Questions ([kw] questions, problems and solutions)",
+                PatternCategory.LISTICLES: "Listicles & Rankings (Top 5 [kw], Best [kw])",
+                PatternCategory.AUDIENCE: "Audience & Use-Case ([kw] for beginners, for pros)",
+                PatternCategory.TIME_MODIFIERS: "Time Modifiers (Current Year [kw])",
+            }
+            selected_categories = st.multiselect(
+                "Pattern Framework Categories",
+                options=list(cat_display_names.keys()),
+                default=list(cat_display_names.keys()),
+                format_func=lambda c: cat_display_names[c],
+                key="kr_pat_cats_select",
+            )
+            col_opt1, col_opt2 = st.columns(2)
+            with col_opt1:
+                include_current_year = st.checkbox("Include Current Year", value=True, key="kr_pat_year_check")
+            with col_opt2:
+                max_patterns = st.slider("Max Patterns Limit", min_value=10, max_value=100, value=30, step=10, key="kr_pat_limit_slider")
+
+        if st.button("✨ Generate Keyword Patterns", type="primary", use_container_width=True, key="kr_pat_gen_btn"):
+            if not pat_seed.strip():
+                st.warning("Please provide a seed topic for patterns.")
+            elif not selected_categories:
+                st.warning("Please select at least one pattern category.")
+            else:
+                alts = [a.strip() for a in pat_alternatives.split(",") if a.strip()] if pat_alternatives else None
+                pat_cfg = PatternConfig(
+                    seeds=[pat_seed.strip()],
+                    categories=selected_categories,
+                    language_mode=PatternLanguage.EN,
+                    alternatives=alts,
+                    include_current_year=include_current_year,
+                    max_generated=max_patterns,
+                )
+                pat_generator = SmartKeywordPatternGenerator()
+                generated_list = pat_generator.generate(pat_cfg)
+                st.session_state.kr_patterns = generated_list
+                st.rerun()
+
+    # Display Generated Patterns
+    patterns = st.session_state.kr_patterns
+    if patterns:
+        st.markdown(f"##### 📋 Generated Pattern Candidates ({len(patterns)})")
+        st.caption("Select any pattern to run empirical Autocomplete research or send to SEO Generator:")
+
+        pat_rows = []
+        for p in patterns:
+            pat_rows.append({
+                "Pattern Candidate": p.keyword,
+                "Category": p.pattern_category.replace("_", " ").title(),
+                "Intent": p.intent.value if hasattr(p.intent, "value") else str(p.intent),
+                "Framework": "Template-Generated Idea",
+            })
+
+        df_pat = pd.DataFrame(pat_rows)
+        st.dataframe(
+            df_pat,
+            column_config={
+                "Pattern Candidate": st.column_config.TextColumn("Candidate Pattern", width="large"),
+                "Category": st.column_config.TextColumn("Framework Category", width="medium"),
+                "Intent": st.column_config.TextColumn("Hypothesized Intent", width="medium"),
+                "Framework": st.column_config.TextColumn("Type", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        c_pact1, c_pact2, c_pact3 = st.columns([2, 2, 2])
+        with c_pact1:
+            all_pat_text = "\n".join(p.keyword for p in patterns)
+            st.download_button(
+                label="📋 Copy / Export All Patterns",
+                data=all_pat_text,
+                file_name=f"patterns_{pat_seed.replace(' ', '_')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+                key="kr_pat_dl_btn",
+            )
+        with c_pact2:
+            top_pattern = patterns[0].keyword
+            if st.button(f"🔍 Run '{top_pattern[:20]}...' in Autocomplete", use_container_width=True, key="kr_pat_run_ac_btn"):
+                st.session_state.kr_last_query = top_pattern
+                st.rerun()
+        with c_pact3:
+            if st.button(f"✨ Send Top Pattern to SEO Generator", type="primary", use_container_width=True, key="kr_pat_send_seo_btn"):
+                st.session_state.seo_main_keyword = patterns[0].keyword
+                st.session_state.seo_secondary_keywords = ", ".join(p.keyword for p in patterns[1:5])
+                st.session_state.current_page = TOOL_SEO_GENERATOR
+                st.rerun()

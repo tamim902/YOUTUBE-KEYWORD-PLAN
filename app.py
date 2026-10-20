@@ -226,14 +226,18 @@ from src.storage import (
 )
 try:
     from src.ui import (
+        FIVE_PRIMARY_TOOLS,
         FOUR_CORE_TOOLS,
         TOOL_KEYWORD_RESEARCH,
+        TOOL_VIDEO_RESEARCH,
         TOOL_COMPETITOR_RESEARCH,
         TOOL_60_DAY_OPPORTUNITIES,
         TOOL_SEO_GENERATOR,
         TOOL_SETTINGS,
+        render_five_primary_navigation,
         render_four_core_navigation,
         render_keyword_research_tool,
+        render_video_research_tool,
         render_competitor_research_tool,
         render_opportunity_finder_tool,
         render_seo_generator_tool,
@@ -305,14 +309,18 @@ except ImportError:
     importlib.reload(src.ui.guide)
     importlib.reload(src.ui)
     from src.ui import (
+        FIVE_PRIMARY_TOOLS,
         FOUR_CORE_TOOLS,
         TOOL_KEYWORD_RESEARCH,
+        TOOL_VIDEO_RESEARCH,
         TOOL_COMPETITOR_RESEARCH,
         TOOL_60_DAY_OPPORTUNITIES,
         TOOL_SEO_GENERATOR,
         TOOL_SETTINGS,
+        render_five_primary_navigation,
         render_four_core_navigation,
         render_keyword_research_tool,
+        render_video_research_tool,
         render_competitor_research_tool,
         render_opportunity_finder_tool,
         render_seo_generator_tool,
@@ -10021,7 +10029,7 @@ def main() -> None:
 
     # Session State Initialization
     if "current_page" not in st.session_state or (
-        st.session_state.current_page not in FOUR_CORE_TOOLS
+        st.session_state.current_page not in FIVE_PRIMARY_TOOLS
         and st.session_state.current_page != TOOL_SETTINGS
         and st.session_state.current_page not in ALL_NAVIGATION_PAGES
     ):
@@ -10055,8 +10063,8 @@ def main() -> None:
     if "active_brief_shortlist_id" not in st.session_state:
         st.session_state.active_brief_shortlist_id = None
 
-    # Navigation Sidebar — Clean 4 Core Tools + Settings
-    selected_page = render_four_core_navigation(current_page=st.session_state.current_page)
+    # Navigation Sidebar — Exactly Five Primary Tools + Settings
+    selected_page = render_five_primary_navigation(current_page=st.session_state.current_page)
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
         st.rerun()
@@ -10068,6 +10076,8 @@ def main() -> None:
     page = st.session_state.current_page
     if page == TOOL_KEYWORD_RESEARCH:
         render_keyword_research_tool()
+    elif page == TOOL_VIDEO_RESEARCH:
+        render_video_research_tool()
     elif page == TOOL_COMPETITOR_RESEARCH:
         render_competitor_research_tool()
     elif page == TOOL_60_DAY_OPPORTUNITIES:

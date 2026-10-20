@@ -31,27 +31,36 @@ PAGE_USER_GUIDE = "📖 User Guide"
 PAGE_AUTH = "🔐 Studio Profile & Auth"
 
 # ==============================================================================
-# Phase 37 / Master Prompt: Simplified Four Core Tools Definitions
+# Master Upgrade: Exactly Five Primary Tools Definitions
 # ==============================================================================
 TOOL_KEYWORD_RESEARCH = "🔍 Keyword Research"
+TOOL_VIDEO_RESEARCH = "🎥 YouTube Video Research"
 TOOL_COMPETITOR_RESEARCH = "🎯 Competitor Research"
-TOOL_60_DAY_OPPORTUNITIES = "⚡ Last 60 Days Opportunity Finder"
-TOOL_SEO_GENERATOR = "✨ SEO Title, Description & Tags Generator"
+TOOL_60_DAY_OPPORTUNITIES = "⚡ 60-Day Opportunities"
+TOOL_SEO_GENERATOR = "✨ SEO Generator"
 TOOL_SETTINGS = "⚙️ Settings"
 
-FOUR_CORE_TOOLS = [
+FIVE_PRIMARY_TOOLS = [
     TOOL_KEYWORD_RESEARCH,
+    TOOL_VIDEO_RESEARCH,
     TOOL_COMPETITOR_RESEARCH,
     TOOL_60_DAY_OPPORTUNITIES,
     TOOL_SEO_GENERATOR,
 ]
 
+# Legacy alias for backward compatibility
+FOUR_CORE_TOOLS = FIVE_PRIMARY_TOOLS
+
 TOOL_CANONICAL_MAP = {
     "✨ SEO Generator": TOOL_SEO_GENERATOR,
+    "✨ SEO Title, Description & Tags Generator": TOOL_SEO_GENERATOR,
     "⚡ 60-Day Opportunities": TOOL_60_DAY_OPPORTUNITIES,
+    "⚡ Last 60 Days Opportunity Finder": TOOL_60_DAY_OPPORTUNITIES,
+    "60-Day Opportunity Finder": TOOL_60_DAY_OPPORTUNITIES,
     "Keyword Research": TOOL_KEYWORD_RESEARCH,
+    "YouTube Video Research": TOOL_VIDEO_RESEARCH,
+    "Video Research": TOOL_VIDEO_RESEARCH,
     "Competitor Research": TOOL_COMPETITOR_RESEARCH,
-    "Last 60 Days Opportunity Finder": TOOL_60_DAY_OPPORTUNITIES,
     "SEO Generator": TOOL_SEO_GENERATOR,
     "Settings": TOOL_SETTINGS,
 }
@@ -652,14 +661,15 @@ def render_navigation(current_page: str = PAGE_LANDING) -> str:
     return selected_page
 
 
-def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> str:
-    """Render the simplified 4-core-tools sidebar navigation.
+def render_five_primary_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> str:
+    """Render the simplified 5-primary-tools sidebar navigation.
 
-    Provides ONLY:
+    Provides EXACTLY FIVE PRIMARY SECTIONS:
     1. Keyword Research
-    2. Competitor Research
-    3. Last 60 Days Opportunity Finder
-    4. SEO Title, Description & Tags Generator
+    2. YouTube Video Research
+    3. Competitor Research
+    4. 60-Day Opportunities
+    5. SEO Generator
     Plus a small quiet action: Settings.
     """
     # Brand Header
@@ -682,7 +692,7 @@ def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> st
 
     # Normalize incoming page
     normalized = TOOL_CANONICAL_MAP.get(current_page, current_page)
-    if normalized not in FOUR_CORE_TOOLS and normalized != TOOL_SETTINGS:
+    if normalized not in FIVE_PRIMARY_TOOLS and normalized != TOOL_SETTINGS:
         normalized = TOOL_KEYWORD_RESEARCH
 
     is_settings = (normalized == TOOL_SETTINGS)
@@ -693,14 +703,14 @@ def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> st
     )
 
     # Determine default radio index
-    radio_idx = FOUR_CORE_TOOLS.index(normalized) if normalized in FOUR_CORE_TOOLS else 0
+    radio_idx = FIVE_PRIMARY_TOOLS.index(normalized) if normalized in FIVE_PRIMARY_TOOLS else 0
 
     selected_tool = st.sidebar.radio(
         "Core Navigation",
-        options=FOUR_CORE_TOOLS,
+        options=FIVE_PRIMARY_TOOLS,
         index=radio_idx,
         label_visibility="collapsed",
-        key="four_core_tools_radio",
+        key="five_primary_tools_radio",
     )
 
     st.sidebar.markdown("<div style='margin: 22px 0 14px 0; border-top: 1px solid #E2E8F0;'></div>", unsafe_allow_html=True)
@@ -716,11 +726,16 @@ def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> st
 
     # If the user was in settings, but clicked a different tool in the radio
     if is_settings:
-        if selected_tool != FOUR_CORE_TOOLS[radio_idx]:
+        if selected_tool != FIVE_PRIMARY_TOOLS[radio_idx]:
             return selected_tool
         return TOOL_SETTINGS
 
     return selected_tool
+
+
+def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> str:
+    """Backward-compatible wrapper routing to the 5 primary tools navigation."""
+    return render_five_primary_navigation(current_page=current_page)
 
 
 def render_metric_card(
