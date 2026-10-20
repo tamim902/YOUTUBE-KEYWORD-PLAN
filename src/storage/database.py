@@ -113,6 +113,7 @@ class DatabaseManager:
         self._ensure_phase25_tables()
         self._ensure_phase26_tables()
         self._ensure_phase31_tables()
+        self._ensure_phase32_tables()
 
     def _ensure_phase9_columns(self) -> None:
         """Ensure Phase 9 columns exist for databases migrated prior to Phase 9."""
@@ -1311,6 +1312,42 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_action_task_status ON action_center_tasks(status);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_action_task_key ON action_center_tasks(task_key);")
 
+    def _ensure_phase32_tables(self) -> None:
+        """Ensure Phase 32 tables exist for Video Content Factory & One-Click Packages."""
+        if not self.db_path.exists():
+            return
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS video_content_packages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id INTEGER NOT NULL,
+                    channel_name TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    primary_keyword TEXT NOT NULL,
+                    supporting_keywords_json TEXT NOT NULL DEFAULT '[]',
+                    format_type TEXT NOT NULL DEFAULT 'long-form',
+                    purpose_type TEXT NOT NULL DEFAULT 'tutorial',
+                    target_viewer TEXT NOT NULL DEFAULT '',
+                    selected_title TEXT NOT NULL,
+                    title_options_json TEXT NOT NULL DEFAULT '[]',
+                    outline_json TEXT NOT NULL DEFAULT '{}',
+                    description_text TEXT NOT NULL DEFAULT '',
+                    thumbnail_concept_json TEXT NOT NULL DEFAULT '{}',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    evidence_checklist_json TEXT NOT NULL DEFAULT '{}',
+                    seo_readiness_json TEXT NOT NULL DEFAULT '{}',
+                    is_saved INTEGER NOT NULL DEFAULT 1,
+                    is_exported INTEGER NOT NULL DEFAULT 0,
+                    calendar_item_id INTEGER,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pkg_chan ON video_content_packages(channel_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pkg_created ON video_content_packages(created_at);")
+
 
     def migrate_db(self, conn: Optional[sqlite3.Connection] = None) -> None:
         """Run all pending schema migrations."""
@@ -1327,6 +1364,7 @@ class DatabaseManager:
         self._ensure_phase25_tables()
         self._ensure_phase26_tables()
         self._ensure_phase31_tables()
+        self._ensure_phase32_tables()
 
 
     # --------------------------------------------------------------------------
@@ -6862,6 +6900,153 @@ class DatabaseManager:
                 "videos_in_production": in_production,
                 "audits_requiring_attention": audits_needing_attention,
             }
+
+    # --------------------------------------------------------------------------
+    # Phase 32: YouTube SEO Content Factory & One-Click Video Package
+    # --------------------------------------------------------------------------
+
+    def save_video_content_package(self, pkg: Dict[str, Any]) -> int:
+        """Save a new video content package or update an existing one."""
+        self._ensure_phase32_tables()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            pkg_id = pkg.get("id")
+            supp_json = json.dumps(pkg.get("supporting_keywords", [])) if isinstance(pkg.get("supporting_keywords"), list) else pkg.get("supporting_keywords_json", "[]")
+            titles_json = json.dumps(pkg.get("title_options", [])) if isinstance(pkg.get("title_options"), list) else pkg.get("title_options_json", "[]")
+            outline_json = json.dumps(pkg.get("outline", {})) if isinstance(pkg.get("outline"), dict) else pkg.get("outline_json", "{}")
+            thumb_json = json.dumps(pkg.get("thumbnail_concept", {})) if isinstance(pkg.get("thumbnail_concept"), dict) else pkg.get("thumbnail_concept_json", "{}")
+            tags_json = json.dumps(pkg.get("tags", [])) if isinstance(pkg.get("tags"), list) else pkg.get("tags_json", "[]")
+            evidence_json = json.dumps(pkg.get("evidence_checklist", {})) if isinstance(pkg.get("evidence_checklist"), dict) else pkg.get("evidence_checklist_json", "{}")
+            readiness_json = json.dumps(pkg.get("seo_readiness", {})) if isinstance(pkg.get("seo_readiness"), dict) else pkg.get("seo_readiness_json", "{}")
+
+            if pkg_id:
+                conn.execute(
+                    """
+                    UPDATE video_content_packages SET
+                        channel_id = ?, channel_name = ?, topic = ?, primary_keyword = ?,
+                        supporting_keywords_json = ?, format_type = ?, purpose_type = ?,
+                        target_viewer = ?, selected_title = ?, title_options_json = ?,
+                        outline_json = ?, description_text = ?, thumbnail_concept_json = ?,
+                        tags_json = ?, evidence_checklist_json = ?, seo_readiness_json = ?,
+                        is_saved = ?, is_exported = ?, calendar_item_id = ?, updated_at = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        int(pkg["channel_id"]),
+                        pkg.get("channel_name", ""),
+                        pkg.get("topic", ""),
+                        pkg.get("primary_keyword", ""),
+                        supp_json,
+                        pkg.get("format_type", "long-form"),
+                        pkg.get("purpose_type", "tutorial"),
+                        pkg.get("target_viewer", ""),
+                        pkg.get("selected_title", ""),
+                        titles_json,
+                        outline_json,
+                        pkg.get("description_text", ""),
+                        thumb_json,
+                        tags_json,
+                        evidence_json,
+                        readiness_json,
+                        1 if pkg.get("is_saved", True) else 0,
+                        1 if pkg.get("is_exported", False) else 0,
+                        pkg.get("calendar_item_id"),
+                        now,
+                        pkg_id,
+                    ),
+                )
+                return pkg_id
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO video_content_packages (
+                        channel_id, channel_name, topic, primary_keyword,
+                        supporting_keywords_json, format_type, purpose_type,
+                        target_viewer, selected_title, title_options_json,
+                        outline_json, description_text, thumbnail_concept_json,
+                        tags_json, evidence_checklist_json, seo_readiness_json,
+                        is_saved, is_exported, calendar_item_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        int(pkg["channel_id"]),
+                        pkg.get("channel_name", ""),
+                        pkg.get("topic", ""),
+                        pkg.get("primary_keyword", ""),
+                        supp_json,
+                        pkg.get("format_type", "long-form"),
+                        pkg.get("purpose_type", "tutorial"),
+                        pkg.get("target_viewer", ""),
+                        pkg.get("selected_title", ""),
+                        titles_json,
+                        outline_json,
+                        pkg.get("description_text", ""),
+                        thumb_json,
+                        tags_json,
+                        evidence_json,
+                        readiness_json,
+                        1 if pkg.get("is_saved", True) else 0,
+                        1 if pkg.get("is_exported", False) else 0,
+                        pkg.get("calendar_item_id"),
+                        pkg.get("created_at", now),
+                        now,
+                    ),
+                )
+                return cur.lastrowid
+
+    def get_video_content_packages(
+        self, channel_id: Optional[int] = None, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieve recent video content packages."""
+        self._ensure_phase32_tables()
+        with self.get_connection() as conn:
+            query = "SELECT * FROM video_content_packages WHERE 1=1"
+            params: List[Any] = []
+            if channel_id is not None:
+                query += " AND channel_id = ?"
+                params.append(channel_id)
+            query += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, params).fetchall()
+            cols = [col[0] for col in conn.execute("SELECT * FROM video_content_packages LIMIT 0;").description]
+            result = []
+            for r in rows:
+                d = dict(zip(cols, r))
+                d["supporting_keywords"] = json.loads(d.get("supporting_keywords_json") or "[]")
+                d["title_options"] = json.loads(d.get("title_options_json") or "[]")
+                d["outline"] = json.loads(d.get("outline_json") or "{}")
+                d["thumbnail_concept"] = json.loads(d.get("thumbnail_concept_json") or "{}")
+                d["tags"] = json.loads(d.get("tags_json") or "[]")
+                d["evidence_checklist"] = json.loads(d.get("evidence_checklist_json") or "{}")
+                d["seo_readiness"] = json.loads(d.get("seo_readiness_json") or "{}")
+                result.append(d)
+            return result
+
+    def get_video_content_package_by_id(self, pkg_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a specific content package by ID."""
+        self._ensure_phase32_tables()
+        with self.get_connection() as conn:
+            r = conn.execute("SELECT * FROM video_content_packages WHERE id = ?;", (pkg_id,)).fetchone()
+            if not r:
+                return None
+            cols = [col[0] for col in conn.execute("SELECT * FROM video_content_packages LIMIT 0;").description]
+            d = dict(zip(cols, r))
+            d["supporting_keywords"] = json.loads(d.get("supporting_keywords_json") or "[]")
+            d["title_options"] = json.loads(d.get("title_options_json") or "[]")
+            d["outline"] = json.loads(d.get("outline_json") or "{}")
+            d["thumbnail_concept"] = json.loads(d.get("thumbnail_concept_json") or "{}")
+            d["tags"] = json.loads(d.get("tags_json") or "[]")
+            d["evidence_checklist"] = json.loads(d.get("evidence_checklist_json") or "{}")
+            d["seo_readiness"] = json.loads(d.get("seo_readiness_json") or "{}")
+            return d
+
+    def delete_video_content_package(self, pkg_id: int) -> bool:
+        """Delete a video content package."""
+        self._ensure_phase32_tables()
+        with self.get_connection() as conn:
+            cur = conn.execute("DELETE FROM video_content_packages WHERE id = ?;", (pkg_id,))
+            return cur.rowcount > 0
 
     # --------------------------------------------------------------------------
     # Database Diagnostics & Backup Facilities

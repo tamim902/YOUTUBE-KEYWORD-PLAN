@@ -274,6 +274,7 @@ try:
         render_guided_keyword_wizard,
         render_action_center_dashboard,
         render_keyword_decision_helper,
+        render_content_factory_workspace,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -336,6 +337,7 @@ except ImportError:
         render_guided_keyword_wizard,
         render_action_center_dashboard,
         render_keyword_decision_helper,
+        render_content_factory_workspace,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -7607,27 +7609,8 @@ def render_page_channels(is_ready: bool) -> None:
 # Phase 22 Part 5: SEO Description Builder & Studio
 # ==============================================================================
 
-def render_page_description_studio(is_ready: bool) -> None:
-    """Render the 8-Part YouTube SEO Description Builder and Compliance Studio."""
-    render_page_header(
-        title="Description Studio",
-        subtitle="Write search-optimized YouTube descriptions with real-time character counters and affiliate disclosures.",
-        category="DISCOVERY & INTELLIGENCE",
-        badge_text="8-Part Framework",
-        provenance="Description Studio",
-    )
-    render_beginner_page_guide("description_studio")
-
-    if not is_ready:
-        render_empty_state("Database is not ready.", "warning")
-        return
-
-    active_chan_id = render_channel_switcher()
-    channel = channel_manager.get_channel(active_chan_id)
-    if not channel:
-        st.error(f"Channel {active_chan_id} not found.")
-        return
-
+def _render_8part_description_builder(channel: ChannelProfile) -> None:
+    """Render the 8-Part YouTube Description Builder and Compliance Studio."""
     st.markdown(f"**Target Workspace:** `{channel.channel_name}` ({channel.channel_niche}) | Affiliate: `{'Enabled' if channel.affiliate_enabled else 'Disabled'}`")
     
     col_in1, col_in2 = st.columns(2)
@@ -7746,6 +7729,39 @@ def render_page_description_studio(is_ready: bool) -> None:
                 st.markdown(f"**{d['topic']}** (`{d['primary_keyword']}`) — *{d['character_count']} chars, created {d['created_at'][:10]}*")
                 st.code(d["full_text"][:250] + "\n...", language="markdown")
                 st.markdown("---")
+
+
+def render_page_description_studio(is_ready: bool) -> None:
+    """Render the YouTube Video Content Factory and 8-Part Description Studio."""
+    render_page_header(
+        title="Content Factory & Description Studio",
+        subtitle="Prepare complete one-click video packages, or craft search-optimized descriptions with FTC compliance.",
+        category="DISCOVERY & INTELLIGENCE",
+        badge_text="Video Package Factory",
+        provenance="Content Factory",
+    )
+    render_beginner_page_guide("description_studio")
+
+    if not is_ready:
+        render_empty_state("Database is not ready.", "warning")
+        return
+
+    active_chan_id = render_channel_switcher()
+    channel = channel_manager.get_channel(active_chan_id)
+    if not channel:
+        st.error(f"Channel {active_chan_id} not found.")
+        return
+
+    studio_tabs = st.tabs([
+        "📦 One-Click Video Package Factory (Recommended)",
+        "📝 8-Part YouTube Description Builder",
+    ])
+
+    with studio_tabs[0]:
+        render_content_factory_workspace(is_ready)
+
+    with studio_tabs[1]:
+        _render_8part_description_builder(channel)
 
 
 # ==============================================================================
