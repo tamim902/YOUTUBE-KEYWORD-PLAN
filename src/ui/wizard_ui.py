@@ -33,6 +33,7 @@ from src.models.wizard import (
 )
 from src.providers.youtube import YouTubeAutocompleteProvider
 from src.storage.database import DatabaseManager, db_manager
+from src.ui.research_memory_ui import render_duplicate_detection_banner
 from src.ui.components import (
     PAGE_CONTENT_OPPORTUNITIES,
     PAGE_DESCRIPTION_STUDIO,
@@ -283,6 +284,14 @@ def render_step_2_topic(state: WizardState) -> None:
         key="wiz_step2_topic_input",
     )
     state.topic = topic_val
+
+    # Phase 34: Duplicate Research Detector for Wizard
+    if topic_val and len(topic_val.strip()) >= 3:
+        render_duplicate_detection_banner(
+            channel_id=state.channel_id,
+            query=topic_val.strip(),
+            context="wizard",
+        )
 
     st.caption("💡 *Quick Idea Starters for Inspiration:*")
     starter_cols = st.columns(4)

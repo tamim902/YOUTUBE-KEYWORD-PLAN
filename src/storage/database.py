@@ -114,6 +114,7 @@ class DatabaseManager:
         self._ensure_phase26_tables()
         self._ensure_phase31_tables()
         self._ensure_phase32_tables()
+        self._ensure_phase34_tables()
 
     def _ensure_phase9_columns(self) -> None:
         """Ensure Phase 9 columns exist for databases migrated prior to Phase 9."""
@@ -1348,6 +1349,58 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pkg_chan ON video_content_packages(channel_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pkg_created ON video_content_packages(created_at);")
 
+    def _ensure_phase34_tables(self) -> None:
+        """Ensure Phase 34 tables exist for Personal SEO Research Memory & Recommendations."""
+        if not self.db_path.exists():
+            return
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS research_memory_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id INTEGER NOT NULL,
+                    topic_or_keyword TEXT NOT NULL,
+                    memory_type TEXT NOT NULL DEFAULT 'seed_search',
+                    source_provenance TEXT NOT NULL DEFAULT 'live_autocomplete',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    intent TEXT NOT NULL DEFAULT 'Informational',
+                    relevance_score REAL NOT NULL DEFAULT 0.0,
+                    evidence_summary_json TEXT NOT NULL DEFAULT '{}',
+                    rejection_reason TEXT DEFAULT '',
+                    user_performance_rating TEXT DEFAULT '',
+                    published_video_url TEXT DEFAULT '',
+                    published_date TEXT DEFAULT '',
+                    research_date TEXT NOT NULL,
+                    last_reviewed_date TEXT DEFAULT '',
+                    is_stale INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_chan ON research_memory_records(channel_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_topic ON research_memory_records(topic_or_keyword);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_type ON research_memory_records(memory_type);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_mem_status ON research_memory_records(status);")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recommendation_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id INTEGER NOT NULL,
+                    recommendation_key TEXT NOT NULL,
+                    recommendation_type TEXT NOT NULL,
+                    feedback_status TEXT NOT NULL,
+                    reason TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(channel_id, recommendation_key)
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_feed_chan ON recommendation_feedback(channel_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_feed_key ON recommendation_feedback(recommendation_key);")
+
 
     def migrate_db(self, conn: Optional[sqlite3.Connection] = None) -> None:
         """Run all pending schema migrations."""
@@ -1365,6 +1418,7 @@ class DatabaseManager:
         self._ensure_phase26_tables()
         self._ensure_phase31_tables()
         self._ensure_phase32_tables()
+        self._ensure_phase34_tables()
 
 
     # --------------------------------------------------------------------------
@@ -7047,6 +7101,378 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cur = conn.execute("DELETE FROM video_content_packages WHERE id = ?;", (pkg_id,))
             return cur.rowcount > 0
+
+    # --------------------------------------------------------------------------
+    # Phase 34: Research Memory & Recommendations Storage
+    # --------------------------------------------------------------------------
+
+    def save_research_memory_record(self, record: Union[Dict[str, Any], Any]) -> int:
+        """Save or update a research memory record."""
+        self._ensure_phase34_tables()
+        if hasattr(record, "to_dict"):
+            d = record.to_dict()
+        elif isinstance(record, dict):
+            d = dict(record)
+        else:
+            d = vars(record)
+
+        now = datetime.now(timezone.utc).isoformat()
+        evidence_json = (
+            json.dumps(d.get("evidence_summary", {}), ensure_ascii=False)
+            if not isinstance(d.get("evidence_summary"), str)
+            else d.get("evidence_summary", "{}")
+        )
+
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """
+                SELECT id FROM research_memory_records 
+                WHERE channel_id = ? AND topic_or_keyword = ? AND memory_type = ?;
+                """,
+                (
+                    d.get("channel_id", 1),
+                    d.get("topic_or_keyword", "").strip(),
+                    d.get("memory_type", "seed_search"),
+                ),
+            )
+            existing = cur.fetchone()
+            if existing:
+                rec_id = existing[0]
+                conn.execute(
+                    """
+                    UPDATE research_memory_records SET
+                        source_provenance = ?,
+                        status = ?,
+                        intent = ?,
+                        relevance_score = ?,
+                        evidence_summary_json = ?,
+                        rejection_reason = ?,
+                        user_performance_rating = ?,
+                        published_video_url = ?,
+                        published_date = ?,
+                        research_date = ?,
+                        last_reviewed_date = ?,
+                        is_stale = ?,
+                        updated_at = ?
+                    WHERE id = ?;
+                    """,
+                    (
+                        d.get("source_provenance", "live_autocomplete"),
+                        d.get("status", "active"),
+                        d.get("intent", "Informational"),
+                        float(d.get("relevance_score", 0.0)),
+                        evidence_json,
+                        d.get("rejection_reason", ""),
+                        d.get("user_performance_rating", ""),
+                        d.get("published_video_url", ""),
+                        d.get("published_date", ""),
+                        d.get("research_date", now),
+                        d.get("last_reviewed_date", now),
+                        1 if d.get("is_stale", False) else 0,
+                        now,
+                        rec_id,
+                    ),
+                )
+                return rec_id
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO research_memory_records (
+                        channel_id, topic_or_keyword, memory_type, source_provenance,
+                        status, intent, relevance_score, evidence_summary_json,
+                        rejection_reason, user_performance_rating, published_video_url,
+                        published_date, research_date, last_reviewed_date, is_stale,
+                        created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        d.get("channel_id", 1),
+                        d.get("topic_or_keyword", "").strip(),
+                        d.get("memory_type", "seed_search"),
+                        d.get("source_provenance", "live_autocomplete"),
+                        d.get("status", "active"),
+                        d.get("intent", "Informational"),
+                        float(d.get("relevance_score", 0.0)),
+                        evidence_json,
+                        d.get("rejection_reason", ""),
+                        d.get("user_performance_rating", ""),
+                        d.get("published_video_url", ""),
+                        d.get("published_date", ""),
+                        d.get("research_date", now),
+                        d.get("last_reviewed_date", now),
+                        1 if d.get("is_stale", False) else 0,
+                        d.get("created_at", now),
+                        now,
+                    ),
+                )
+                return cur.lastrowid
+
+    def get_research_memory_records(
+        self,
+        channel_id: int,
+        memory_type: Optional[str] = None,
+        status: Optional[str] = None,
+        search_query: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve research memory records for a specific channel with optional filtering."""
+        self._ensure_phase34_tables()
+        with self.get_connection() as conn:
+            query = "SELECT * FROM research_memory_records WHERE channel_id = ?"
+            params: List[Any] = [channel_id]
+
+            if memory_type:
+                query += " AND memory_type = ?"
+                params.append(memory_type)
+
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+
+            if search_query and search_query.strip():
+                query += " AND topic_or_keyword LIKE ?"
+                params.append(f"%{search_query.strip()}%")
+
+            query += " ORDER BY id DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, params).fetchall()
+            cols = [col[0] for col in conn.execute("SELECT * FROM research_memory_records LIMIT 0;").description]
+            result = []
+            for r in rows:
+                d = dict(zip(cols, r))
+                try:
+                    d["evidence_summary"] = json.loads(d.get("evidence_summary_json") or "{}")
+                except Exception:
+                    d["evidence_summary"] = {}
+                result.append(d)
+            return result
+
+    def get_research_memory_record_by_id(self, record_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a specific research memory record by ID."""
+        self._ensure_phase34_tables()
+        with self.get_connection() as conn:
+            row = conn.execute("SELECT * FROM research_memory_records WHERE id = ?;", (record_id,)).fetchone()
+            if not row:
+                return None
+            cols = [col[0] for col in conn.execute("SELECT * FROM research_memory_records LIMIT 0;").description]
+            d = dict(zip(cols, row))
+            try:
+                d["evidence_summary"] = json.loads(d.get("evidence_summary_json") or "{}")
+            except Exception:
+                d["evidence_summary"] = {}
+            return d
+
+    def update_research_memory_status(
+        self,
+        record_id: int,
+        channel_id: int,
+        status: str,
+        user_rating: str = "",
+        rejection_reason: str = "",
+        published_url: str = "",
+    ) -> bool:
+        """Update the status, rating, or publication notes for a memory record."""
+        self._ensure_phase34_tables()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE research_memory_records SET
+                    status = ?,
+                    user_performance_rating = CASE WHEN ? != '' THEN ? ELSE user_performance_rating END,
+                    rejection_reason = CASE WHEN ? != '' THEN ? ELSE rejection_reason END,
+                    published_video_url = CASE WHEN ? != '' THEN ? ELSE published_video_url END,
+                    published_date = CASE WHEN ? = 'published' AND published_date = '' THEN ? ELSE published_date END,
+                    last_reviewed_date = ?,
+                    updated_at = ?
+                WHERE id = ? AND channel_id = ?;
+                """,
+                (
+                    status,
+                    user_rating, user_rating,
+                    rejection_reason, rejection_reason,
+                    published_url, published_url,
+                    status, now,
+                    now,
+                    now,
+                    record_id,
+                    channel_id,
+                ),
+            )
+            return cur.rowcount > 0
+
+    def delete_research_memory_record(self, record_id: int, channel_id: int) -> bool:
+        """Safely delete a single research memory record for a specific channel."""
+        self._ensure_phase34_tables()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM research_memory_records WHERE id = ? AND channel_id = ?;",
+                (record_id, channel_id),
+            )
+            return cur.rowcount > 0
+
+    def save_recommendation_feedback(
+        self,
+        channel_id: int,
+        recommendation_key: str,
+        recommendation_type: str,
+        feedback_status: str,
+        reason: str = "",
+    ) -> bool:
+        """Persist user feedback on a smart recommendation."""
+        self._ensure_phase34_tables()
+        now = datetime.now(timezone.utc).isoformat()
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO recommendation_feedback (
+                    channel_id, recommendation_key, recommendation_type,
+                    feedback_status, reason, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(channel_id, recommendation_key) DO UPDATE SET
+                    feedback_status = excluded.feedback_status,
+                    reason = excluded.reason,
+                    updated_at = excluded.updated_at;
+                """,
+                (channel_id, recommendation_key, recommendation_type, feedback_status, reason, now, now),
+            )
+            return True
+
+    def get_recommendation_feedback(self, channel_id: int) -> Dict[str, Dict[str, Any]]:
+        """Retrieve all active feedback records for a channel keyed by recommendation_key."""
+        self._ensure_phase34_tables()
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM recommendation_feedback WHERE channel_id = ?;",
+                (channel_id,),
+            ).fetchall()
+            cols = [col[0] for col in conn.execute("SELECT * FROM recommendation_feedback LIMIT 0;").description]
+            result = {}
+            for r in rows:
+                d = dict(zip(cols, r))
+                result[d["recommendation_key"]] = d
+            return result
+
+    def delete_recommendation_feedback(self, channel_id: int, recommendation_key: str) -> bool:
+        """Reset or reverse feedback for a recommendation."""
+        self._ensure_phase34_tables()
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                "DELETE FROM recommendation_feedback WHERE channel_id = ? AND recommendation_key = ?;",
+                (channel_id, recommendation_key),
+            )
+            return cur.rowcount > 0
+
+    def sync_channel_research_memory(self, channel_id: int) -> int:
+        """Synchronize existing searches, daily gap ideas, packages, and calendar into memory records."""
+        self._ensure_phase34_tables()
+        synced_count = 0
+        now = datetime.now(timezone.utc).isoformat()
+
+        # 1. Sync from daily_idea_items
+        ideas = self.get_daily_ideas_by_channel(channel_id, limit=100)
+        for item in ideas:
+            t = getattr(item, "proposed_topic", "")
+            if not t:
+                continue
+            is_saved = getattr(item, "is_saved", False)
+            is_rejected = getattr(item, "is_rejected", False)
+            if is_saved:
+                self.save_research_memory_record({
+                    "channel_id": channel_id,
+                    "topic_or_keyword": t,
+                    "memory_type": "saved_topic",
+                    "source_provenance": "morning_report",
+                    "status": "active",
+                    "intent": "Informational",
+                    "evidence_summary": {
+                        "primary_keyword": getattr(item, "primary_keyword", t),
+                        "pillar": getattr(item, "pillar_name", ""),
+                    },
+                    "research_date": getattr(item, "created_at", now),
+                })
+                synced_count += 1
+            elif is_rejected:
+                self.save_research_memory_record({
+                    "channel_id": channel_id,
+                    "topic_or_keyword": t,
+                    "memory_type": "rejected_idea",
+                    "source_provenance": "morning_report",
+                    "status": "rejected",
+                    "rejection_reason": getattr(item, "rejection_reason", "Not aligned with audience"),
+                    "research_date": getattr(item, "created_at", now),
+                })
+                synced_count += 1
+
+        # 2. Sync from video_content_packages
+        packages = self.get_video_content_packages(channel_id=channel_id, limit=50)
+        for p in packages:
+            t = p.get("topic", "")
+            if not t:
+                continue
+            self.save_research_memory_record({
+                "channel_id": channel_id,
+                "topic_or_keyword": t,
+                "memory_type": "content_package",
+                "source_provenance": "content_factory",
+                "status": "active",
+                "intent": "Commercial" if p.get("purpose_type") == "review" else "Informational",
+                "evidence_summary": {
+                    "package_id": p.get("id"),
+                    "primary_keyword": p.get("primary_keyword", ""),
+                    "selected_title": p.get("selected_title", ""),
+                    "format": p.get("format_type", "long-form"),
+                },
+                "research_date": p.get("created_at", now),
+            })
+            synced_count += 1
+
+        # 3. Sync from strategy_calendar_items
+        cal_items = self.get_strategy_calendar_items(channel_id=channel_id)
+        for item in cal_items[:50]:
+            t = getattr(item, "title", "")
+            st = getattr(item, "status", "")
+            if not t:
+                continue
+            if st.lower() in ("published", "ready to publish"):
+                self.save_research_memory_record({
+                    "channel_id": channel_id,
+                    "topic_or_keyword": t,
+                    "memory_type": "published_video" if st.lower() == "published" else "saved_topic",
+                    "source_provenance": "user_input",
+                    "status": "published" if st.lower() == "published" else "active",
+                    "published_date": getattr(item, "planned_date", ""),
+                    "evidence_summary": {
+                        "primary_keyword": getattr(item, "primary_keyword", ""),
+                        "calendar_status": st,
+                    },
+                    "research_date": getattr(item, "created_at", now),
+                })
+                synced_count += 1
+
+        # 4. Sync recent searches if channel matches or default Channel 1
+        if channel_id == 1:
+            searches = self.get_recent_searches(limit=25)
+            for s in searches:
+                sk = s.get("seed_keyword", "")
+                if not sk:
+                    continue
+                self.save_research_memory_record({
+                    "channel_id": channel_id,
+                    "topic_or_keyword": sk,
+                    "memory_type": "seed_search",
+                    "source_provenance": "live_autocomplete",
+                    "status": "active",
+                    "evidence_summary": {
+                        "total_results": s.get("total_results", 0),
+                        "search_id": s.get("id"),
+                    },
+                    "research_date": s.get("created_at", now),
+                })
+                synced_count += 1
+
+        return synced_count
 
     # --------------------------------------------------------------------------
     # Database Diagnostics & Backup Facilities

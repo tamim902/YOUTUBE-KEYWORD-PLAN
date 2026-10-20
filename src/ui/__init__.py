@@ -52,6 +52,12 @@ from src.ui.action_center_ui import (
 from src.ui.content_factory_ui import (
     render_content_factory_workspace,
 )
+from src.ui.research_memory_ui import (
+    render_duplicate_detection_banner,
+    render_research_memory_registry_tab,
+    render_smart_recommendations_tab,
+    render_performance_insights_tab,
+)
 from src.ui.wizard_ui import (
     render_guided_keyword_wizard,
     get_or_create_wizard_state,
@@ -134,6 +140,10 @@ __all__ = [
     "render_action_center_dashboard",
     "render_keyword_decision_helper",
     "render_content_factory_workspace",
+    "render_duplicate_detection_banner",
+    "render_research_memory_registry_tab",
+    "render_smart_recommendations_tab",
+    "render_performance_insights_tab",
 ]
 
 

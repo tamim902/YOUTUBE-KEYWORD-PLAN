@@ -275,6 +275,10 @@ try:
         render_action_center_dashboard,
         render_keyword_decision_helper,
         render_content_factory_workspace,
+        render_duplicate_detection_banner,
+        render_research_memory_registry_tab,
+        render_smart_recommendations_tab,
+        render_performance_insights_tab,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -338,6 +342,10 @@ except ImportError:
         render_action_center_dashboard,
         render_keyword_decision_helper,
         render_content_factory_workspace,
+        render_duplicate_detection_banner,
+        render_research_memory_registry_tab,
+        render_smart_recommendations_tab,
+        render_performance_insights_tab,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -1546,6 +1554,15 @@ def render_page_new_research(is_ready: bool) -> None:
             st.session_state.last_query = ""
             st.rerun()
 
+        # Phase 34: Duplicate Research Detector & Memory Alert
+        active_channel_id = st.session_state.get("active_channel_id", 1)
+        if seed_input and len(seed_input.strip()) >= 3:
+            render_duplicate_detection_banner(
+                channel_id=active_channel_id,
+                query=seed_input.strip(),
+                context="new_research",
+            )
+
         # Optional Advanced Settings in Collapsible Expander
         with st.expander("⚙️ Advanced Search Settings (Language, Country & Expansion Methods)", expanded=False):
             st.caption("Customize your search location, language endpoint, or enable multi-pattern expansions:")
@@ -2692,23 +2709,8 @@ def render_page_patterns() -> None:
         )
 
 
-def render_page_saved(is_ready: bool) -> None:
-    """Render the Saved Research Projects and History page."""
-    render_page_header(
-        title="Saved Research",
-        subtitle="Access, search, rename, and export all your saved research projects from local storage.",
-        category="WORKFLOW & MANAGEMENT",
-        badge_text="Local Storage",
-        badge_type="success" if is_ready else "warning",
-        provenance="local_sqlite",
-    )
-    render_beginner_page_guide("saved_research")
-    render_contextual_help("saved_research")
-
-    if not is_ready:
-        st.error("Database connection unavailable.")
-        return
-
+def _render_saved_projects_view(is_ready: bool) -> None:
+    """Render the Saved Research Projects and History page subview."""
     # 1. Search Bar for Project History
     col_s1, col_s2 = st.columns([3, 1])
     with col_s1:
@@ -2940,6 +2942,45 @@ def render_page_saved(is_ready: bool) -> None:
             st.session_state.active_seed_input = seed_for_next
             st.session_state.current_page = PAGE_CONTENT_OPPORTUNITIES
             st.rerun()
+
+
+def render_page_saved(is_ready: bool) -> None:
+    """Render the Saved Research Projects, Research Memory & Recommendations page."""
+    render_page_header(
+        title="Saved Research",
+        subtitle="Access saved research projects, personal research memory, smart recommendations, and performance insights.",
+        category="WORKFLOW & MANAGEMENT",
+        badge_text="Local Storage",
+        badge_type="success" if is_ready else "warning",
+        provenance="local_sqlite",
+    )
+    render_beginner_page_guide("saved_research")
+    render_contextual_help("saved_research")
+
+    if not is_ready:
+        st.error("Database connection unavailable.")
+        return
+
+    active_channel_id = st.session_state.get("active_channel_id", 1)
+
+    saved_tabs = st.tabs([
+        "💾 Saved Projects",
+        "🧠 Research Memory Registry",
+        "💡 Smart Next Actions",
+        "📊 Performance Insights",
+    ])
+
+    with saved_tabs[0]:
+        _render_saved_projects_view(is_ready)
+
+    with saved_tabs[1]:
+        render_research_memory_registry_tab(active_channel_id)
+
+    with saved_tabs[2]:
+        render_smart_recommendations_tab(active_channel_id)
+
+    with saved_tabs[3]:
+        render_performance_insights_tab(active_channel_id)
 
 
 
