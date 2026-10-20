@@ -197,6 +197,9 @@ class DailyOpportunityEngine:
         gaps: Optional[GapFinder] = None,
         notifier: Optional[NotificationService] = None,
     ) -> None:
+        if isinstance(chan_mgr, DatabaseManager) and database is None:
+            database = chan_mgr
+            chan_mgr = None
         self.chan_mgr = chan_mgr or channel_manager
         self.db = database or db_manager
         self.seo = seo or seo_engine
