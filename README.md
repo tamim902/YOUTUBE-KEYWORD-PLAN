@@ -1,6 +1,18 @@
-# YouTube Keyword Finder 🔍
+# Keyword Studio — Advanced YouTube SEO Intelligence 🔍
+**Version:** `v36.0 Final Release` | **Status:** `PASS — Production Ready`
 
-**YouTube Keyword Finder** is a local-first, privacy-focused Windows desktop application engineered to discover real YouTube autocomplete suggestions, recursively map keyword clusters, and generate classified keyword variations (Top 5/10, Best, Reviews, How-to, Comparisons, Questions, and Long-tail).
+**Keyword Studio** is a local-first, privacy-focused Windows application engineered to discover authentic YouTube autocomplete suggestions, recursively map keyword clusters, evaluate competitor content gaps, prepare 1-click SEO content packages, and manage production across 4 dedicated channel portfolios.
+
+---
+
+## ⚡ Quick Start (Windows)
+
+1. **Launch Keyword Studio**:
+   - Double-click **`run.bat`** (or right-click **`run.ps1`** -> *Run with PowerShell*).
+   - The launcher automatically initializes your virtual environment, sets up configuration, and opens `http://localhost:8501` in your browser.
+2. **Beginner Guide**: See **[`USER_GUIDE.md`](USER_GUIDE.md)** for a complete step-by-step walkthrough.
+3. **Database Backups**: Double-click **`backup_data.bat`** to create a verified snapshot in `data/backups/`.
+4. **Restore Database**: Double-click **`restore_data.bat`** to safely restore your data.
 
 ---
 
