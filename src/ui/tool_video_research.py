@@ -23,6 +23,7 @@ from src.models.serp import CompetitorVideoItem, KeywordSerpAnalysis
 from src.providers.serp import YouTubeDataApiSerpProvider
 from src.storage.database import db_manager
 from src.storage.export import ExportService, generate_export_filename
+from src.ui.channel_components import get_active_channel
 from src.ui.components import (
     TOOL_COMPETITOR_RESEARCH,
     TOOL_60_DAY_OPPORTUNITIES,
@@ -72,11 +73,15 @@ def render_video_research_tool() -> None:
     if "vr_target_keyword" not in st.session_state:
         st.session_state.vr_target_keyword = ""
 
-    # Prefill from cross-tool handoff if present
+    # Channel Context
+    active_chan = get_active_channel()
+
+    # Prefill from cross-tool handoff or active channel if present
     initial_keyword = (
         st.session_state.vr_target_keyword
         or st.session_state.vr_last_query
         or st.session_state.get("kr_last_query", "")
+        or (active_chan.channel_niche.split("&")[0].strip() if active_chan else "")
         or ""
     )
 
@@ -175,7 +180,8 @@ def render_video_research_tool() -> None:
             col_f4, col_f5, col_f6 = st.columns(3)
             with col_f4:
                 country_opts = list(config.supported_countries.keys())
-                def_country_idx = country_opts.index("US") if "US" in country_opts else 0
+                chan_country = active_chan.target_country.upper() if active_chan else "US"
+                def_country_idx = country_opts.index(chan_country) if chan_country in country_opts else (country_opts.index("US") if "US" in country_opts else 0)
                 selected_country = st.selectbox(
                     "Region / Country Code",
                     options=country_opts,
@@ -185,7 +191,8 @@ def render_video_research_tool() -> None:
                 )
             with col_f5:
                 lang_opts = list(config.supported_languages.keys())
-                def_lang_idx = lang_opts.index("en") if "en" in lang_opts else 0
+                chan_lang = active_chan.target_language.lower() if active_chan else "en"
+                def_lang_idx = lang_opts.index(chan_lang) if chan_lang in lang_opts else (lang_opts.index("en") if "en" in lang_opts else 0)
                 selected_lang = st.selectbox(
                     "Search Language",
                     options=lang_opts,
@@ -346,6 +353,12 @@ def render_video_research_tool() -> None:
 
                         # Video-level actions
                         with st.expander("🛠️ Video Actions & Metadata", expanded=False):
+                            col_cp1, col_cp2 = st.columns(2)
+                            with col_cp1:
+                                st.text_input("📋 Video Title (Click to Copy)", value=v.title, key=f"copy_t_{v.video_id}", help="Click inside and Ctrl+C to copy title")
+                            with col_cp2:
+                                st.text_input("🔗 Video URL (Click to Copy)", value=v.video_url, key=f"copy_u_{v.video_id}", help="Click inside and Ctrl+C to copy URL")
+
                             if v.tags:
                                 st.caption(f"Tags: {', '.join(v.tags[:10])}")
                             if v.description:

@@ -69,6 +69,12 @@ from src.ui.research_memory_ui import (
     render_smart_recommendations_tab,
     render_performance_insights_tab,
 )
+from src.ui.channel_components import (
+    get_active_channel,
+    render_channel_header_bar,
+    render_channel_editor,
+    render_channel_ideas_panel,
+)
 from src.ui.tool_keyword_research import render_keyword_research_tool
 from src.ui.tool_video_research import render_video_research_tool
 from src.ui.tool_competitor_research import render_competitor_research_tool
@@ -178,6 +184,10 @@ __all__ = [
     "render_opportunity_finder_tool",
     "render_seo_generator_tool",
     "render_settings_tool",
+    "get_active_channel",
+    "render_channel_header_bar",
+    "render_channel_editor",
+    "render_channel_ideas_panel",
 ]
 
 

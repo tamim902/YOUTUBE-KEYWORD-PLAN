@@ -19,6 +19,26 @@ import streamlit as st
 from src.intelligence.content_factory import content_factory_engine, VideoFormat, VideoPurpose
 from src.patterns.generator import SmartKeywordPatternGenerator
 from src.patterns.models import PatternCategory, PatternConfig, PatternLanguage
+from src.ui.channel_components import get_active_channel
+
+
+def generate_thumbnail_text_hook(topic: str, main_kw: str) -> str:
+    """Generate a high-contrast 2-5 word thumbnail text hook."""
+    clean_kw = (main_kw or topic).upper()
+    if "MISTAKE" in clean_kw:
+        return "AVOID THIS!"
+    if "VS" in clean_kw or "BETTER" in clean_kw:
+        return "THE REAL WINNER"
+    if "BEST" in clean_kw:
+        return "DON'T BUY YET!"
+    if "TUTORIAL" in clean_kw or "HOW" in clean_kw or "GUIDE" in clean_kw:
+        return "DO THIS FIRST!"
+    if "REVIEW" in clean_kw:
+        return "WORTH IT IN 2026?"
+    words = [w for w in clean_kw.split() if len(w) > 2]
+    if len(words) >= 2:
+        return f"{words[0]} {words[1]} EXPOSED!"
+    return "WATCH THIS FIRST!"
 
 
 def render_seo_generator_tool() -> None:
@@ -50,15 +70,18 @@ def render_seo_generator_tool() -> None:
         unsafe_allow_html=True,
     )
 
+    # Active Channel Context
+    active_chan = get_active_channel()
+
     # Session State
     if "seo_main_keyword" not in st.session_state:
-        st.session_state.seo_main_keyword = ""
+        st.session_state.seo_main_keyword = (active_chan.channel_niche.split("&")[0].strip() if active_chan else "")
     if "seo_secondary_keywords" not in st.session_state:
         st.session_state.seo_secondary_keywords = ""
     if "seo_topic_summary" not in st.session_state:
         st.session_state.seo_topic_summary = ""
     if "seo_target_viewer" not in st.session_state:
-        st.session_state.seo_target_viewer = "General Audience & Enthusiasts"
+        st.session_state.seo_target_viewer = (active_chan.target_audience if active_chan else "General Audience & Enthusiasts")
     if "seo_generated_pkg" not in st.session_state:
         st.session_state.seo_generated_pkg = None
 
@@ -173,11 +196,25 @@ def render_seo_generator_tool() -> None:
 
         # Primary recommended title
         best_title = pkg.selected_title or (pkg.title_options[0].title if pkg.title_options else main_kw.title())
-        st.success(
-            f"**Recommended Primary Title:**\n\n"
-            f"### `{best_title}`\n\n"
-            f"*Length: {len(best_title)} characters | High CTR hook with front-loaded primary keyword.*"
+        t_len = len(best_title)
+        if 50 <= t_len <= 65:
+            sweet_badge = f"🟢 **Optimal Length ({t_len} chars)** &middot; Sweet spot (50–65 chars) for mobile and desktop feeds."
+        elif t_len < 50:
+            sweet_badge = f"🟡 **Compact Length ({t_len} chars)** &middot; Concise, fits mobile well."
+        else:
+            sweet_badge = f"⚠️ **Long Length ({t_len} chars)** &middot; Risk of truncation on mobile search."
+
+        st.markdown(
+            f"""
+            <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #16A34A; border-radius: 8px; padding: 12px 16px; margin-bottom: 8px;">
+                <div style="font-size: 0.78rem; font-weight: 700; color: #166534; text-transform: uppercase; margin-bottom: 4px;">Recommended Primary Title</div>
+                <div style="font-size: 1.25rem; font-weight: 700; color: #14532D; margin-bottom: 6px;">{best_title}</div>
+                <div style="font-size: 0.82rem; color: #15803D;">{sweet_badge}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+        st.code(best_title, language=None)
 
         with st.expander("👁️ View Alternative & Pattern-Based Title Options", expanded=True):
             st.markdown("###### Structured Creative Angles:")
@@ -200,18 +237,40 @@ def render_seo_generator_tool() -> None:
                     with c_pc_col:
                         st.caption(f"{len(p_title)} chars")
 
-        # 2. Video Description
-        st.markdown("#### 2. YouTube Description Draft")
+        # 2. Thumbnail Text Hook
+        thumb_hook = generate_thumbnail_text_hook(pkg.topic, main_kw)
+        st.markdown("#### 2. Thumbnail Text Hook (2–5 Words)")
+        st.caption("Bold, high-contrast hook for your video thumbnail to maximize CTR:")
+        st.markdown(
+            f"""
+            <div style="background: #0F172A; color: #F8FAFC; border-radius: 8px; padding: 12px 18px; 
+                        display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                <span style="font-size: 1.25rem; font-weight: 800; letter-spacing: 0.05em; color: #FACC15;">
+                    "{thumb_hook}"
+                </span>
+                <span style="font-size: 0.75rem; color: #94A3B8; text-transform: uppercase; font-weight: 600;">
+                    High-CTR Overlay Text
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.code(thumb_hook, language=None)
+
+        # 3. Video Description
+        st.markdown("#### 3. YouTube Description Draft")
         st.caption("Structured 8-part description draft with opening hook, keyword placement, outline, and links:")
         desc_text = st.text_area(
             "Editable Video Description",
             value=pkg.description_text,
-            height=260,
+            height=240,
             key="gen_desc_editor",
         )
+        with st.expander("📋 Click to Copy Description Text", expanded=False):
+            st.code(desc_text, language=None)
 
-        # 3. Tags & Hashtags
-        st.markdown("#### 3. Relevant Tag Suggestions & Hashtags")
+        # 4. Tags & Hashtags
+        st.markdown("#### 4. Relevant Tag Suggestions & Hashtags")
         st.caption("Extracted from topic semantics (copy directly to YouTube Studio tags box; zero fabricated volume metrics):")
 
         # Comma separated tag string
@@ -222,22 +281,36 @@ def render_seo_generator_tool() -> None:
             key="gen_tags_display",
             help="Formatted with commas for 1-click paste into YouTube Studio's tag box.",
         )
+        st.code(tags_str, language=None)
 
         # Hashtags
         hashtags = [f"#{word.replace(' ', '')}" for word in [main_kw] + (pkg.supporting_keywords[:2] if pkg.supporting_keywords else [])]
         hashtags_str = " ".join(hashtags)
         st.caption(f"Suggested Hashtags: `{hashtags_str}`")
 
-        # 4. SEO Content Readiness Checklist
-        st.markdown("#### 4. SEO Readiness Checklist")
+        # 5. SEO Content Readiness Checklist
+        st.markdown("#### 5. SEO Readiness Checklist")
         if pkg.seo_readiness:
             for item in pkg.seo_readiness:
                 st_icon = "✅" if item.status.value == "PASS" else "⚠️"
                 st.markdown(f"- {st_icon} **{item.item_name}**: {item.explanation}")
 
-        # 5. Master Copy & Export Row
+        # 6. Master Copy & Export Row
         st.markdown("---")
         st.markdown("#### 📋 1-Click Clipboard & Export")
+        with st.expander("📋 View & Copy Entire Complete Package", expanded=False):
+            st.code(
+                f"=== YOUTUBE VIDEO SEO PACKAGE ===\n\n"
+                f"PRIMARY TITLE:\n{best_title}\n\n"
+                f"THUMBNAIL HOOK:\n{thumb_hook}\n\n"
+                f"ALTERNATIVE TITLES:\n" + "\n".join(f"- {t.title}" for t in pkg.title_options) + "\n\n"
+                f"VIDEO DESCRIPTION:\n{desc_text}\n\n"
+                f"TAGS:\n{tags_str}\n\n"
+                f"HASHTAGS:\n{hashtags_str}\n\n"
+                f"TARGET KEYWORD: {pkg.primary_keyword}\n"
+                f"GENERATED AT: {pkg.created_at}\n",
+                language=None,
+            )
         c_cp1, c_cp2, c_cp3 = st.columns([2, 1.5, 1.5])
 
         # All-in-one formatted package block

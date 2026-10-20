@@ -242,6 +242,7 @@ try:
         render_opportunity_finder_tool,
         render_seo_generator_tool,
         render_settings_tool,
+        render_channel_header_bar,
         ALL_NAVIGATION_PAGES,
         NAVIGATION_PAGES,
         PAGE_LANDING,
@@ -325,6 +326,7 @@ except ImportError:
         render_opportunity_finder_tool,
         render_seo_generator_tool,
         render_settings_tool,
+        render_channel_header_bar,
         ALL_NAVIGATION_PAGES,
         NAVIGATION_PAGES,
         PAGE_LANDING,
@@ -10074,6 +10076,9 @@ def main() -> None:
 
     # Route Page
     page = st.session_state.current_page
+    if page in FIVE_PRIMARY_TOOLS or page == TOOL_SETTINGS:
+        render_channel_header_bar()
+
     if page == TOOL_KEYWORD_RESEARCH:
         render_keyword_research_tool()
     elif page == TOOL_VIDEO_RESEARCH:

@@ -25,6 +25,7 @@ from src.models.serp import CompetitorVideoItem, KeywordSerpAnalysis
 from src.providers.serp import UnconnectedSerpMetricsProvider, YouTubeDataApiSerpProvider
 from src.storage.database import db_manager
 from src.storage.export import ExportService, sanitize_dataframe_for_export
+from src.ui.channel_components import get_active_channel
 from src.ui.components import (
     TOOL_VIDEO_RESEARCH,
     TOOL_SEO_GENERATOR,
@@ -73,7 +74,14 @@ def render_competitor_research_tool() -> None:
         or (db_manager.get_setting("youtube_api_key") if hasattr(db_manager, "get_setting") else None)
     )
 
-    initial_query = st.session_state.cr_last_query or st.session_state.get("vr_last_query", "") or ""
+    active_chan = get_active_channel()
+    initial_query = (
+        st.session_state.cr_last_query
+        or st.session_state.get("vr_last_query", "")
+        or st.session_state.get("kr_last_query", "")
+        or (active_chan.channel_niche.split("&")[0].strip() if active_chan else "")
+        or ""
+    )
 
     # Search Form
     with st.container():

@@ -28,6 +28,7 @@ from src.providers.serp import YouTubeDataApiSerpProvider
 from src.providers.youtube import YouTubeAutocompleteProvider
 from src.storage.database import db_manager
 from src.storage.export import ExportService, sanitize_dataframe_for_export
+from src.ui.channel_components import get_active_channel
 from src.ui.components import (
     TOOL_VIDEO_RESEARCH,
     TOOL_COMPETITOR_RESEARCH,
@@ -73,7 +74,13 @@ def render_opportunity_finder_tool() -> None:
         _, _, w_str = gap_finder.get_rolling_window() if hasattr(gap_finder, "get_rolling_window") else ("", "", "Rolling 60 Days")
         st.session_state.opp_window_str = w_str
 
-    initial_seed = st.session_state.opp_last_seed or st.session_state.get("kr_last_query", "") or ""
+    active_chan = get_active_channel()
+    initial_seed = (
+        st.session_state.opp_last_seed
+        or st.session_state.get("kr_last_query", "")
+        or (active_chan.channel_niche.split("&")[0].strip() if active_chan else "")
+        or ""
+    )
 
     # Input Form
     with st.container():
@@ -257,6 +264,26 @@ def render_opportunity_finder_tool() -> None:
             hide_index=True,
             use_container_width=True,
         )
+
+        # 1-Click "Start Creating" on Candidate Opportunity
+        st.markdown("##### 🚀 1-Click 'Start Creating' on Candidate Opportunity")
+        col_sel, col_btn = st.columns([3.5, 1.5])
+        candidate_options = [r["Candidate Keyword"] for r in results]
+        with col_sel:
+            selected_cand = st.selectbox(
+                "Select Candidate Topic to Turn into Video",
+                options=candidate_options,
+                key="opp_cand_selector",
+                label_visibility="collapsed",
+            )
+        with col_btn:
+            if st.button("🚀 Start Creating Topic", type="primary", use_container_width=True, key="opp_start_creating_cand_btn"):
+                matching_row = next((r for r in results if r["Candidate Keyword"] == selected_cand), results[0])
+                st.session_state["seo_main_keyword"] = matching_row["Candidate Keyword"]
+                st.session_state["seo_topic_summary"] = matching_row["Suggested Angle"]
+                st.session_state["seo_secondary_keywords"] = f"{st.session_state.opp_last_seed}, {matching_row['Candidate Keyword']} tutorial"
+                st.session_state["current_page"] = TOOL_SEO_GENERATOR
+                st.rerun()
 
         # Action Buttons
         st.markdown("#### 🛠️ Opportunity Actions & Cross-Tool Handoffs")
