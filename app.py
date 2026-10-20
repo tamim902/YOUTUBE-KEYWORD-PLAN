@@ -269,6 +269,9 @@ try:
         render_system_status,
         render_workflow_progress_checklist,
         reset_guidance_preferences,
+        get_current_interface_mode,
+        set_interface_mode,
+        render_guided_keyword_wizard,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -326,6 +329,9 @@ except ImportError:
         render_system_status,
         render_workflow_progress_checklist,
         reset_guidance_preferences,
+        get_current_interface_mode,
+        set_interface_mode,
+        render_guided_keyword_wizard,
         INTERACTIVE_TOURS,
         ONBOARDING_GOALS,
         USER_GUIDE_SECTIONS,
@@ -578,11 +584,16 @@ def build_dataframe_from_keywords(
             k.parent_queries[0] if k.parent_queries else k.keyword
         )
 
+        from src.models.wizard import get_relevance_tier_label
+        rel_score_raw = getattr(k, "relevance_score", 0.0)
+        rel_label = get_relevance_tier_label(rel_score_raw, is_generated=bool(getattr(k, "is_generated", False)))
+
         display_data.append(
             {
                 "#": idx + 1,
                 "Keyword": k.keyword,
-                "Relevance Score": round(getattr(k, "relevance_score", 0.0), 1),
+                "Relevance Label": rel_label,
+                "Relevance Score": round(rel_score_raw, 1),
                 "Cluster": getattr(k, "cluster_name", "Core Seed Variations") or "Core Seed Variations",
                 "Source Type": strict_source,
                 "Discovery Query": discovery_query,
@@ -1442,17 +1453,30 @@ def render_page_dashboard(is_ready: bool, recent_searches: List[Dict[str, Any]])
 
 def render_page_new_research(is_ready: bool) -> None:
     """Render the New Keyword Research configuration page."""
+    cur_interface_mode = get_current_interface_mode()
+
     render_page_header(
         title="New Keyword Research",
         subtitle="Find what real viewers are searching for on YouTube. Enter a topic to see authentic autocomplete suggestions.",
         category="WORKSPACE",
-        badge_text="Autocomplete Active",
-        badge_type="primary",
+        badge_text="Simple Mode Active" if cur_interface_mode == "simple" else "Advanced Mode Active",
+        badge_type="primary" if cur_interface_mode == "simple" else "neutral",
         provenance="autocomplete",
     )
     render_beginner_page_guide("keyword_research")
     render_contextual_help("keyword_discovery")
     render_interactive_tour("keyword_studio")
+
+    if cur_interface_mode == "simple":
+        simple_tabs = st.tabs([
+            "🌱 7-Step Guided Keyword Wizard (Recommended)",
+            "⚡ Quick Instant Autocomplete",
+        ])
+        with simple_tabs[0]:
+            render_guided_keyword_wizard()
+            return
+        with simple_tabs[1]:
+            pass  # Proceeds to quick instant search below
 
     rerun_p = st.session_state.get("rerun_params", {})
     default_seed_val = (
@@ -1463,6 +1487,8 @@ def render_page_new_research(is_ready: bool) -> None:
     default_country_code = rerun_p.get("country", "US")
 
     trigger_az_from_panel = False
+
+    is_searching_now = bool(st.session_state.get("is_searching", False))
 
     with st.container():
         # Beginner-focused prompt card
@@ -1492,9 +1518,9 @@ def render_page_new_research(is_ready: bool) -> None:
                 label_visibility="collapsed",
             )
         with col_fetch:
-            fetch_live_clicked = st.button("🔍 Find Keywords", use_container_width=True, type="primary")
+            fetch_live_clicked = st.button("🔍 Find Keywords", use_container_width=True, type="primary", disabled=is_searching_now)
         with col_clr:
-            clear_seed_clicked = st.button("🧹 Clear", use_container_width=True)
+            clear_seed_clicked = st.button("🧹 Clear", use_container_width=True, disabled=is_searching_now)
 
         st.markdown(
             """
@@ -1660,10 +1686,12 @@ def render_page_new_research(is_ready: bool) -> None:
                     st.warning("⚠️ Cancellation requested. Stopping worker at next safe checkpoint...")
 
         # Handle Immediate Autocomplete Fetching
-        if fetch_live_clicked:
+        if fetch_live_clicked and not is_searching_now:
+            st.session_state["is_searching"] = True
             parsed_seeds = parse_seed_inputs(seed_input)
             if not parsed_seeds:
                 st.warning("⚠️ Please enter a keyword or topic first. For example: 'best wireless earbuds' or 'python for beginners'.")
+                st.session_state["is_searching"] = False
             else:
                 target_q = parsed_seeds[0]
                 with st.spinner(f"Querying YouTube autocomplete for '{target_q}'..."):
@@ -1681,6 +1709,8 @@ def render_page_new_research(is_ready: bool) -> None:
                         st.session_state.active_seed_input = target_q
                     except Exception as exc:
                         st.error(f"Failed to fetch live suggestions: {exc}")
+                    finally:
+                        st.session_state["is_searching"] = False
 
         # Interactive YouTube-like Suggestion Panel
         if st.session_state.get("instant_suggestions"):
@@ -1721,13 +1751,17 @@ def render_page_new_research(is_ready: bool) -> None:
                 s_cached = getattr(sug, "is_cached", False)
                 item_badge_text = "CACHED_AUTOCOMPLETE" if s_cached else "LIVE_AUTOCOMPLETE"
                 item_badge_color = "#7c3aed" if s_cached else "#059669"
+                cls_sug = default_classifier.classify(sug.keyword)
+                score_sug = default_scorer.score(sug.keyword, s_seed, cls_sug)
+                rel_badge_html = render_relevance_badge(score_sug.total_score, is_generated=getattr(sug, "is_generated", False))
 
                 with r_col1:
                     st.markdown(
-                        f"<div style='padding: 6px 0; font-size: 1.02rem; display: flex; align-items: center;'>"
-                        f"<span style='color: #94a3b8; margin-right: 8px;'>🔍</span>"
+                        f"<div style='padding: 6px 0; font-size: 1.02rem; display: flex; align-items: center; flex-wrap: wrap; gap: 6px;'>"
+                        f"<span style='color: #94a3b8;'>🔍</span>"
                         f"<span><b>{sug.keyword}</b></span>"
-                        f"<span style='margin-left: 10px; font-size: 0.7rem; background: {item_badge_color}14; color: {item_badge_color}; border: 1px solid {item_badge_color}33; padding: 1px 6px; border-radius: 6px; font-weight: 600;'>{item_badge_text}</span>"
+                        f"<span style='font-size: 0.7rem; background: {item_badge_color}14; color: {item_badge_color}; border: 1px solid {item_badge_color}33; padding: 1px 6px; border-radius: 6px; font-weight: 600;'>{item_badge_text}</span>"
+                        f"{rel_badge_html}"
                         f"</div>",
                         unsafe_allow_html=True,
                     )
@@ -1747,6 +1781,7 @@ def render_page_new_research(is_ready: bool) -> None:
                     if st.button("📋 Copy", key=f"cp_sug_{s_idx}", help="Copy this keyword"):
                         st.session_state.copy_box_content = [sug.keyword]
                         st.session_state.show_copy_box = True
+                        st.toast(f"Copied '{sug.keyword}' to clipboard!")
                         st.rerun()
 
             # Suggestion Panel Action Bar
@@ -1756,6 +1791,7 @@ def render_page_new_research(is_ready: bool) -> None:
                 if st.button("📋 Copy All Suggestions", key="cp_all_visible_btn", use_container_width=True):
                     st.session_state.copy_box_content = [s.keyword for s in s_list]
                     st.session_state.show_copy_box = True
+                    st.toast(f"Copied {len(s_list)} suggestions to clipboard!")
                     st.rerun()
             with p_act2:
                 if st.button("🔄 Refresh Suggestions", key="refresh_live_btn", use_container_width=True):
@@ -2244,6 +2280,7 @@ def render_page_results() -> None:
         if st.button("📋 Copy All Filtered", use_container_width=True):
             st.session_state.copy_box_content = [item[0].keyword for item in filtered_items]
             st.session_state.show_copy_box = True
+            st.toast(f"Copied {len(filtered_items)} keywords to clipboard buffer!")
 
     with act_col2:
         if st.button(f"📋 Copy Selected ({len(selected_indices)})", use_container_width=True):
@@ -2252,6 +2289,7 @@ def render_page_results() -> None:
                     df_filtered.iloc[r]["Keyword"] for r in selected_indices
                 ]
                 st.session_state.show_copy_box = True
+                st.toast(f"Copied {len(selected_indices)} selected keywords to clipboard buffer!")
             else:
                 st.info("Select one or more rows in the table below to copy.")
 
@@ -2306,6 +2344,7 @@ def render_page_results() -> None:
     # 6. Interactive Results Table with Plain-English Column Config
     results_col_config = {
         "Keyword": st.column_config.TextColumn("Keyword", help="Authentic query from YouTube search autocomplete"),
+        "Relevance Label": st.column_config.TextColumn("Relevance Tier", help="Plain English rating: Highly relevant, Worth reviewing, More research needed, or Generated idea"),
         "Relevance Score": st.column_config.NumberColumn("Topic Potential", help="Research-based estimate (0–100) comparing semantic match to your starting topic. Does not guarantee views or rankings."),
         "Cluster": st.column_config.TextColumn("Topic Group", help="Keywords grouped by common sub-topic"),
         "Intent Classification": st.column_config.TextColumn("Viewer Search Intent", help="What the viewer wants to do: learn, compare, review, or solve a problem"),

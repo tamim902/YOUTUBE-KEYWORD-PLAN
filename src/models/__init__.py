@@ -101,6 +101,16 @@ from src.models.validation import (
     ProductValidationRecord,
     TopicValidationReport,
 )
+from src.models.wizard import (
+    BEGINNER_TOOLTIPS,
+    InterfaceMode,
+    RelevanceTierLabel,
+    WizardState,
+    WizardStep,
+    WizardSuggestionItem,
+    get_relevance_badge_style,
+    get_relevance_tier_label,
+)
 
 __all__ = [
     "AutocompleteResult",
@@ -185,5 +195,13 @@ __all__ = [
     "CompetitorVideoRecord",
     "ProductValidationRecord",
     "TopicValidationReport",
+    "InterfaceMode",
+    "WizardStep",
+    "RelevanceTierLabel",
+    "get_relevance_tier_label",
+    "get_relevance_badge_style",
+    "BEGINNER_TOOLTIPS",
+    "WizardSuggestionItem",
+    "WizardState",
 ]
 

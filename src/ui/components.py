@@ -341,6 +341,54 @@ def format_nav_label(page_key: str) -> str:
     return PAGE_LABEL_CLEAN_MAP.get(page_key, str(page_key))
 
 
+def get_current_interface_mode() -> str:
+    """Get active interface mode ('simple' or 'advanced'), checking session state and DB."""
+    if "interface_mode" in st.session_state and st.session_state["interface_mode"] in ("simple", "advanced"):
+        return st.session_state["interface_mode"]
+    try:
+        from src.storage.database import DatabaseManager
+        val = DatabaseManager().get_setting("interface_mode", "simple")
+        mode = "advanced" if val == "advanced" else "simple"
+    except Exception:
+        mode = "simple"
+    st.session_state["interface_mode"] = mode
+    return mode
+
+
+def set_interface_mode(mode: str) -> None:
+    """Set and persist active interface mode ('simple' or 'advanced')."""
+    clean_mode = "advanced" if str(mode).strip().lower() in ("advanced", "adv", "pro", "expert") else "simple"
+    st.session_state["interface_mode"] = clean_mode
+    try:
+        from src.storage.database import DatabaseManager
+        DatabaseManager().set_setting("interface_mode", clean_mode)
+    except Exception:
+        pass
+
+
+def render_beginner_tooltip(term_key: str) -> str:
+    """Retrieve beginner-friendly honest tooltip text for a key concept."""
+    from src.models.wizard import BEGINNER_TOOLTIPS
+    return BEGINNER_TOOLTIPS.get(term_key, "Helpful guidance for this topic.")
+
+
+def render_relevance_badge(score: Optional[float], is_generated: bool = False) -> str:
+    """Render an HTML badge displaying plain English relevance tier with tooltip."""
+    from src.models.wizard import get_relevance_badge_style, get_relevance_tier_label
+    label = get_relevance_tier_label(score, is_generated=is_generated)
+    style = get_relevance_badge_style(label)
+    bg = style.get("bg", "#F8FAFC")
+    col = style.get("color", "#64748B")
+    border = style.get("border", "#E2E8F0")
+    icon = style.get("icon", "⚪")
+    return (
+        f"<span style='background: {bg}; color: {col}; "
+        f"border: 1px solid {border}; padding: 2px 8px; border-radius: 6px; "
+        f"font-size: 0.76rem; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;' "
+        f"title='{label}: Deterministic relevance classification'>{icon} {label}</span>"
+    )
+
+
 def render_navigation(current_page: str = PAGE_LANDING) -> str:
     """Render polished SaaS sidebar navigation menu and return selected page."""
     # Ensure current_page is valid
@@ -427,6 +475,21 @@ def render_navigation(current_page: str = PAGE_LANDING) -> str:
     )
     if compact_toggle != compact_mode:
         st.session_state["sidebar_compact_mode"] = compact_toggle
+        st.rerun()
+
+    # Phase 29: Interface Experience Mode (Simple Mode vs Advanced Mode)
+    cur_mode = get_current_interface_mode()
+    is_advanced = (cur_mode == "advanced")
+
+    mode_toggle = st.sidebar.toggle(
+        "⚡ Advanced Mode",
+        value=is_advanced,
+        key="sidebar_interface_mode_toggle",
+        help="Turn ON for power-user multi-level crawls and technical diagnostics. Turn OFF for the beginner-friendly 7-step guided wizard.",
+    )
+    new_mode = "advanced" if mode_toggle else "simple"
+    if new_mode != cur_mode:
+        set_interface_mode(new_mode)
         st.rerun()
 
     st.sidebar.markdown("<div class=\"ks-sidebar-divider\"></div>", unsafe_allow_html=True)

@@ -40,6 +40,14 @@ from src.ui.components import (
     render_empty_state,
     render_provenance_badge,
     render_recommended_next_step,
+    get_current_interface_mode,
+    set_interface_mode,
+    render_beginner_tooltip,
+    render_relevance_badge,
+)
+from src.ui.wizard_ui import (
+    render_guided_keyword_wizard,
+    get_or_create_wizard_state,
 )
 from src.ui.styles import CUSTOM_CSS
 from src.ui.guide import (
@@ -110,6 +118,12 @@ __all__ = [
     "render_onboarding_guide",
     "render_workflow_progress_checklist",
     "reset_guidance_preferences",
+    "get_current_interface_mode",
+    "set_interface_mode",
+    "render_beginner_tooltip",
+    "render_relevance_badge",
+    "render_guided_keyword_wizard",
+    "get_or_create_wizard_state",
 ]
 
 
