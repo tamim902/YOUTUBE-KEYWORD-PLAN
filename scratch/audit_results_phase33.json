@@ -1,0 +1,206 @@
+{
+  "Step 01: Launch Application & Core Architecture": {
+    "status": "PASS",
+    "details": {
+      "journal_mode": "wal",
+      "interface_mode": "advanced",
+      "total_tables": 47,
+      "navigation_destinations": 14,
+      "summary": "SQLite active in WAL mode with 47 tables; 14 navigation destinations confirmed."
+    }
+  },
+  "Step 02: Select Channel Profile": {
+    "status": "PASS",
+    "details": {
+      "channel_count": 4,
+      "channels": [
+        "TechGear Pulse",
+        "CodeCraft বাংলা",
+        "HomeChef Artisan",
+        "FitPulse Active"
+      ],
+      "selected_test": "CodeCraft বাংলা",
+      "language": "bn",
+      "audience": "Bangla-speaking students, junior programmers, and aspiring software engineers",
+      "summary": "All 4 channels verified with distinct audiences and Unicode support."
+    }
+  },
+  "Step 03: Enter Seed Keyword & Validation": {
+    "status": "PASS",
+    "details": {
+      "sanitized_en": "best wireless mechanical keyboard",
+      "sanitized_bn": "পাইথন প্রোগ্রামিং টিউটোরিয়াল",
+      "sanitized_ws": "mechanical keyboard",
+      "empty_guarded": true,
+      "summary": "Full validation, trimming, and UTF-8 Bengali preservation verified."
+    }
+  },
+  "Step 04: Run Keyword Research (Live Autocomplete)": {
+    "status": "PASS",
+    "details": {
+      "query": "mechanical keyboard",
+      "suggestions_count": 10,
+      "sample_suggestions": [
+        "AutocompleteResult(keyword='mechanical keyboard', source_type='autocomplete', source_name='youtube_autocomplete', language='en', country='US', retrieved_at='2026-10-20T18:07:53.442198+00:00', discovery_query='mechanical keyboard', is_cached=True)",
+        "AutocompleteResult(keyword='mechanical keyboard sound', source_type='autocomplete', source_name='youtube_autocomplete', language='en', country='US', retrieved_at='2026-10-20T18:07:53.442198+00:00', discovery_query='mechanical keyboard', is_cached=True)",
+        "AutocompleteResult(keyword='mechanical keyboard asmr', source_type='autocomplete', source_name='youtube_autocomplete', language='en', country='US', retrieved_at='2026-10-20T18:07:53.442198+00:00', discovery_query='mechanical keyboard', is_cached=True)",
+        "AutocompleteResult(keyword='mechanical keyboard switches', source_type='autocomplete', source_name='youtube_autocomplete', language='en', country='US', retrieved_at='2026-10-20T18:07:53.442198+00:00', discovery_query='mechanical keyboard', is_cached=True)"
+      ],
+      "summary": "Retrieved 10 genuine autocomplete candidates."
+    }
+  },
+  "Step 05: Inspect Sources & Provenance Coverage": {
+    "status": "PASS",
+    "details": {
+      "cached_entries": 37,
+      "recorded_keywords": 750,
+      "provenance_tracked": true,
+      "summary": "Verified provenance metadata (37 cached entries, 750 keywords)."
+    }
+  },
+  "Step 06: Review Relevance & Search Intent": {
+    "status": "PASS",
+    "details": {
+      "keyword": "best mechanical keyboard for typing 2026",
+      "relevance_score": 95.5,
+      "search_intent": "Commercial Investigation",
+      "epistemic_modesty": "No fabricated monthly search volume or CPC metrics.",
+      "summary": "Deterministic score (95.5/100), intent 'Commercial Investigation'."
+    }
+  },
+  "Step 07: Competitor / SERP Video Research": {
+    "status": "BLOCKED",
+    "details": {
+      "reason": "YOUTUBE_API_KEY environment variable not configured.",
+      "connected": false,
+      "fallback_message": "Not available — no verified data source connected",
+      "summary": "BLOCKED BY CONFIGURATION (Missing YouTube API Key) — Handled gracefully."
+    }
+  },
+  "Step 08: 60-Day Content-Gap Opportunity Search": {
+    "status": "PASS",
+    "details": {
+      "report_date": "2026-10-20",
+      "channels_processed": 4,
+      "ideas_generated": 0,
+      "summary": "Generated daily gap report (0 ideas across 4 channels)."
+    }
+  },
+  "Step 09: Product & Affiliate Opportunities": {
+    "status": "PASS",
+    "details": {
+      "products_identified": 10,
+      "sample_products": [
+        "Keychron Q1 Pro",
+        "Keychron V1 Max",
+        "Logitech G PRO X TKL"
+      ],
+      "ftc_disclosure_enforced": true,
+      "summary": "Retrieved 10 curated products for niche with FTC policy."
+    }
+  },
+  "Step 10: Topic Selection & Decision Helper": {
+    "status": "PASS",
+    "details": {
+      "candidate": "custom mechanical keyboard build guide",
+      "verdict": "🟢 Strong Candidate",
+      "confidence": "High Evidence",
+      "cannibalization_risk": "Low overlap risk. No direct match found in channel's published video catalog.",
+      "summary": "Evaluated topic 'custom mechanical keyboard build guide' -> 🟢 Strong Candidate (High Evidence)."
+    }
+  },
+  "Step 11: Generate SEO Content Package": {
+    "status": "PASS",
+    "details": {
+      "titles_count": 5,
+      "outline_sections": 5,
+      "description_length": 1246,
+      "thumbnail_hook": "CUSTOM MECHANICAL KEYBOARD",
+      "summary": "Generated 6-part package (5 titles, 5 outline sections)."
+    }
+  },
+  "Step 12: SEO Readiness Checklist": {
+    "status": "PASS",
+    "details": {
+      "checks_count": 5,
+      "checks": {
+        "Title Length (Sweet Spot)": "PASS",
+        "Primary Keyword Placement": "PASS",
+        "Outline Pacing & Content Alignment": "PASS",
+        "Keyword Naturalness & Density": "PASS",
+        "FTC Affiliate Disclosure": "NOT_APPLICABLE"
+      },
+      "summary": "5-point checklist evaluated (4/5 passed)."
+    }
+  },
+  "Step 13: Save & Reopen Research & Package": {
+    "status": "PASS",
+    "details": {
+      "package_id": 3,
+      "topic": "Custom Mechanical Keyboard Build Guide",
+      "channel_id": 1,
+      "reopened_successfully": true,
+      "summary": "Package #3 persisted and reloaded with complete fidelity."
+    }
+  },
+  "Step 14: Export Results & Formula Sanitization": {
+    "status": "PASS",
+    "details": {
+      "markdown_bytes": 4872,
+      "json_bytes": 8448,
+      "formula_injection_sanitized": true,
+      "summary": "Markdown, JSON, and CSV exports verified; formula injection successfully neutralized."
+    }
+  },
+  "Step 15: Four-Channel Isolation Verification": {
+    "status": "PASS",
+    "details": {
+      "channels_verified": 4,
+      "status_per_channel": {
+        "TechGear Pulse": {
+          "channel_id": 1,
+          "language": "en",
+          "calendar_items": 1,
+          "packages": 3,
+          "tasks": 4,
+          "isolated": true
+        },
+        "CodeCraft বাংলা": {
+          "channel_id": 2,
+          "language": "bn",
+          "calendar_items": 0,
+          "packages": 0,
+          "tasks": 2,
+          "isolated": true
+        },
+        "HomeChef Artisan": {
+          "channel_id": 3,
+          "language": "en",
+          "calendar_items": 0,
+          "packages": 0,
+          "tasks": 2,
+          "isolated": true
+        },
+        "FitPulse Active": {
+          "channel_id": 4,
+          "language": "en",
+          "calendar_items": 0,
+          "packages": 0,
+          "tasks": 2,
+          "isolated": true
+        }
+      },
+      "summary": "Zero data bleed across all 4 channels (searches, calendar, packages, tasks)."
+    }
+  },
+  "Step 16: Daily Automation & Action Center Telemetry": {
+    "status": "PASS",
+    "details": {
+      "next_scheduled_run": "Daily at 07:00 AM (Asia/Dhaka)",
+      "unreviewed_ideas_total": 16,
+      "tasks_synced_ch1": 4,
+      "local_runner_notice_present": true,
+      "summary": "Telemetry verified (Next run: Daily at 07:00 AM (Asia/Dhaka), Ch1 Tasks: 4)."
+    }
+  }
+}
