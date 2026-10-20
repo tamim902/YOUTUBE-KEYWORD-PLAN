@@ -61,9 +61,9 @@ CUSTOM_CSS = """
        1B. Apple-Inspired SaaS Sidebar & Navigation System
        ========================================================================= */
     [data-testid="stSidebar"] {
-        background-color: #FAFAFA !important;
+        background-color: #FFFFFF !important;
         border-right: 1px solid #E2E8F0 !important;
-        box-shadow: 1px 0 4px rgba(0, 0, 0, 0.02) !important;
+        box-shadow: 1px 0 6px rgba(0, 0, 0, 0.03) !important;
     }
 
     [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {

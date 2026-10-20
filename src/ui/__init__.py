@@ -21,6 +21,7 @@ from src.ui.components import (
     PAGE_SEO_AUDIT,
     PAGE_ANALYTICS,
     PAGE_STRATEGY,
+    PAGE_VALIDATION,
     PAGE_USER_GUIDE,
     PAGE_AUTH,
     PAGE_SETTINGS,
@@ -42,10 +43,12 @@ from src.ui.components import (
 )
 from src.ui.styles import CUSTOM_CSS
 from src.ui.guide import (
+    BEGINNER_PAGE_GUIDES,
     INTERACTIVE_TOURS,
     ONBOARDING_GOALS,
     USER_GUIDE_SECTIONS,
     WORKFLOW_PLANS,
+    render_beginner_page_guide,
     render_contextual_help,
     render_interactive_tour,
     render_next_best_action_banner,
@@ -75,6 +78,7 @@ __all__ = [
     "PAGE_SEO_AUDIT",
     "PAGE_ANALYTICS",
     "PAGE_STRATEGY",
+    "PAGE_VALIDATION",
     "PAGE_USER_GUIDE",
     "PAGE_AUTH",
 
@@ -94,6 +98,8 @@ __all__ = [
     "render_provenance_badge",
     "render_recommended_next_step",
     "CUSTOM_CSS",
+    "BEGINNER_PAGE_GUIDES",
+    "render_beginner_page_guide",
     "INTERACTIVE_TOURS",
     "ONBOARDING_GOALS",
     "USER_GUIDE_SECTIONS",

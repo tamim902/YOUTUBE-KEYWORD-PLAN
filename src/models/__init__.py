@@ -92,6 +92,15 @@ from src.models.strategy import (
     ProductionWorkflowProject,
     ChannelStrategySettings,
 )
+from src.models.validation import (
+    TopicReadinessStatus,
+    AngleType,
+    TopicAngle,
+    OwnChannelOverlapResult,
+    CompetitorVideoRecord,
+    ProductValidationRecord,
+    TopicValidationReport,
+)
 
 __all__ = [
     "AutocompleteResult",
@@ -169,5 +178,12 @@ __all__ = [
     "ContentBriefDocument",
     "ProductionWorkflowProject",
     "ChannelStrategySettings",
+    "TopicReadinessStatus",
+    "AngleType",
+    "TopicAngle",
+    "OwnChannelOverlapResult",
+    "CompetitorVideoRecord",
+    "ProductValidationRecord",
+    "TopicValidationReport",
 ]
 

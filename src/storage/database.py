@@ -57,6 +57,15 @@ from src.models.strategy import (
     ProductionWorkflowProject,
     ChannelStrategySettings,
 )
+from src.models.validation import (
+    TopicReadinessStatus,
+    AngleType,
+    TopicAngle,
+    OwnChannelOverlapResult,
+    CompetitorVideoRecord,
+    ProductValidationRecord,
+    TopicValidationReport,
+)
 from src.storage.backup import BackupManager
 from src.storage.migrations import MigrationManager
 from src.utils.normalization import count_tokens, normalize_keyword_key
@@ -102,6 +111,7 @@ class DatabaseManager:
         self._ensure_phase23_tables()
         self._ensure_phase24_tables()
         self._ensure_phase25_tables()
+        self._ensure_phase26_tables()
 
     def _ensure_phase9_columns(self) -> None:
         """Ensure Phase 9 columns exist for databases migrated prior to Phase 9."""
@@ -1199,6 +1209,74 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_proj_chan ON production_workflow_projects(channel_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_proj_stage ON production_workflow_projects(current_stage);")
 
+    def _ensure_phase26_tables(self) -> None:
+        """Ensure Phase 26 tables exist for Topic Validation Engine & Growth Intelligence."""
+        if not self.db_path.exists():
+            return
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS topic_validation_reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id INTEGER NOT NULL,
+                    topic TEXT NOT NULL,
+                    primary_keyword TEXT NOT NULL,
+                    secondary_keywords_json TEXT NOT NULL DEFAULT '[]',
+                    search_intent TEXT NOT NULL DEFAULT 'Informational / How-To',
+                    target_viewer TEXT NOT NULL DEFAULT 'General Audience',
+                    niche_match_score REAL NOT NULL DEFAULT 0.0,
+                    intent_clarity_score REAL NOT NULL DEFAULT 0.0,
+                    keyword_evidence_score REAL NOT NULL DEFAULT 0.0,
+                    recent_video_evidence_score REAL NOT NULL DEFAULT 0.0,
+                    own_channel_overlap_score REAL NOT NULL DEFAULT 100.0,
+                    product_relevance_score REAL NOT NULL DEFAULT 0.0,
+                    composite_opportunity_score REAL NOT NULL DEFAULT 0.0,
+                    confidence_tier TEXT NOT NULL DEFAULT 'Moderate Evidence',
+                    readiness_status TEXT NOT NULL DEFAULT 'Ready for Human Review',
+                    what_supports_idea_json TEXT NOT NULL DEFAULT '[]',
+                    what_weakens_idea_json TEXT NOT NULL DEFAULT '[]',
+                    what_remains_unknown_json TEXT NOT NULL DEFAULT '[]',
+                    further_research_needed_json TEXT NOT NULL DEFAULT '[]',
+                    gap_state TEXT NOT NULL DEFAULT 'FEW MATCHING RECENT VIDEOS FOUND',
+                    queries_executed_json TEXT NOT NULL DEFAULT '[]',
+                    recent_videos_count INTEGER NOT NULL DEFAULT 0,
+                    competitor_videos_json TEXT NOT NULL DEFAULT '[]',
+                    suggested_angles_json TEXT NOT NULL DEFAULT '[]',
+                    product_validation_json TEXT,
+                    is_approved INTEGER NOT NULL DEFAULT 0,
+                    is_rejected INTEGER NOT NULL DEFAULT 0,
+                    is_saved INTEGER NOT NULL DEFAULT 0,
+                    is_added_to_calendar INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_val_chan ON topic_validation_reports(channel_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_val_status ON topic_validation_reports(readiness_status);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_val_appr ON topic_validation_reports(is_approved);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_val_saved ON topic_validation_reports(is_saved);")
+
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS competitor_video_records (
+                    video_id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    channel_title TEXT NOT NULL,
+                    published_at TEXT NOT NULL,
+                    view_count INTEGER,
+                    duration TEXT NOT NULL DEFAULT '',
+                    video_url TEXT NOT NULL DEFAULT '',
+                    matching_query TEXT NOT NULL DEFAULT '',
+                    relevance_reason TEXT NOT NULL DEFAULT '',
+                    relative_age_days INTEGER NOT NULL DEFAULT 0,
+                    views_per_day REAL,
+                    created_at TEXT NOT NULL
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_comp_query ON competitor_video_records(matching_query);")
+
 
     def migrate_db(self, conn: Optional[sqlite3.Connection] = None) -> None:
         """Run all pending schema migrations."""
@@ -1213,6 +1291,7 @@ class DatabaseManager:
         self._ensure_phase23_tables()
         self._ensure_phase24_tables()
         self._ensure_phase25_tables()
+        self._ensure_phase26_tables()
 
 
     # --------------------------------------------------------------------------
@@ -6214,6 +6293,355 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cur = conn.execute("DELETE FROM production_workflow_projects WHERE id = ?;", (project_id,))
             return cur.rowcount > 0
+
+    # --------------------------------------------------------------------------
+    # Phase 26: Topic Validation Engine & Growth Intelligence Facilities
+    # --------------------------------------------------------------------------
+
+    def save_topic_validation_report(self, report: TopicValidationReport) -> int:
+        """Save or update a topic validation report."""
+        now_iso = datetime.now(timezone.utc).isoformat()
+        created_at = report.created_at or now_iso
+        updated_at = now_iso
+        with self.get_connection() as conn:
+            if report.id:
+                conn.execute(
+                    """
+                    UPDATE topic_validation_reports SET
+                        topic = ?, primary_keyword = ?, secondary_keywords_json = ?,
+                        search_intent = ?, target_viewer = ?, niche_match_score = ?,
+                        intent_clarity_score = ?, keyword_evidence_score = ?,
+                        recent_video_evidence_score = ?, own_channel_overlap_score = ?,
+                        product_relevance_score = ?, composite_opportunity_score = ?,
+                        confidence_tier = ?, readiness_status = ?, what_supports_idea_json = ?,
+                        what_weakens_idea_json = ?, what_remains_unknown_json = ?,
+                        further_research_needed_json = ?, gap_state = ?,
+                        queries_executed_json = ?, recent_videos_count = ?,
+                        competitor_videos_json = ?, suggested_angles_json = ?,
+                        product_validation_json = ?, is_approved = ?, is_rejected = ?,
+                        is_saved = ?, is_added_to_calendar = ?, updated_at = ?
+                    WHERE id = ? AND channel_id = ?;
+                    """,
+                    (
+                        report.topic,
+                        report.primary_keyword,
+                        json.dumps(report.secondary_keywords),
+                        report.search_intent,
+                        report.target_viewer,
+                        report.niche_match_score,
+                        report.intent_clarity_score,
+                        report.keyword_evidence_score,
+                        report.recent_video_evidence_score,
+                        report.own_channel_overlap_score,
+                        report.product_relevance_score,
+                        report.composite_opportunity_score,
+                        report.confidence_tier,
+                        report.readiness_status,
+                        json.dumps(report.what_supports_idea),
+                        json.dumps(report.what_weakens_idea),
+                        json.dumps(report.what_remains_unknown),
+                        json.dumps(report.further_research_needed),
+                        report.gap_state,
+                        json.dumps(report.queries_executed),
+                        report.recent_videos_count,
+                        json.dumps(report.competitor_videos),
+                        json.dumps(report.suggested_angles),
+                        json.dumps(report.product_validation) if report.product_validation else None,
+                        1 if report.is_approved else 0,
+                        1 if report.is_rejected else 0,
+                        1 if report.is_saved else 0,
+                        1 if report.is_added_to_calendar else 0,
+                        updated_at,
+                        report.id,
+                        report.channel_id,
+                    ),
+                )
+                return report.id
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO topic_validation_reports (
+                        channel_id, topic, primary_keyword, secondary_keywords_json,
+                        search_intent, target_viewer, niche_match_score,
+                        intent_clarity_score, keyword_evidence_score,
+                        recent_video_evidence_score, own_channel_overlap_score,
+                        product_relevance_score, composite_opportunity_score,
+                        confidence_tier, readiness_status, what_supports_idea_json,
+                        what_weakens_idea_json, what_remains_unknown_json,
+                        further_research_needed_json, gap_state,
+                        queries_executed_json, recent_videos_count,
+                        competitor_videos_json, suggested_angles_json,
+                        product_validation_json, is_approved, is_rejected,
+                        is_saved, is_added_to_calendar, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        report.channel_id,
+                        report.topic,
+                        report.primary_keyword,
+                        json.dumps(report.secondary_keywords),
+                        report.search_intent,
+                        report.target_viewer,
+                        report.niche_match_score,
+                        report.intent_clarity_score,
+                        report.keyword_evidence_score,
+                        report.recent_video_evidence_score,
+                        report.own_channel_overlap_score,
+                        report.product_relevance_score,
+                        report.composite_opportunity_score,
+                        report.confidence_tier,
+                        report.readiness_status,
+                        json.dumps(report.what_supports_idea),
+                        json.dumps(report.what_weakens_idea),
+                        json.dumps(report.what_remains_unknown),
+                        json.dumps(report.further_research_needed),
+                        report.gap_state,
+                        json.dumps(report.queries_executed),
+                        report.recent_videos_count,
+                        json.dumps(report.competitor_videos),
+                        json.dumps(report.suggested_angles),
+                        json.dumps(report.product_validation) if report.product_validation else None,
+                        1 if report.is_approved else 0,
+                        1 if report.is_rejected else 0,
+                        1 if report.is_saved else 0,
+                        1 if report.is_added_to_calendar else 0,
+                        created_at,
+                        updated_at,
+                    ),
+                )
+                return cur.lastrowid
+
+    def get_topic_validation_reports(
+        self,
+        channel_id: int,
+        status: Optional[str] = None,
+        is_approved: Optional[bool] = None,
+        is_saved: Optional[bool] = None,
+    ) -> List[TopicValidationReport]:
+        """Retrieve topic validation reports for a channel, optionally filtered."""
+        with self.get_connection() as conn:
+            query = """
+                SELECT id, channel_id, topic, primary_keyword, secondary_keywords_json,
+                       search_intent, target_viewer, niche_match_score,
+                       intent_clarity_score, keyword_evidence_score,
+                       recent_video_evidence_score, own_channel_overlap_score,
+                       product_relevance_score, composite_opportunity_score,
+                       confidence_tier, readiness_status, what_supports_idea_json,
+                       what_weakens_idea_json, what_remains_unknown_json,
+                       further_research_needed_json, gap_state,
+                       queries_executed_json, recent_videos_count,
+                       competitor_videos_json, suggested_angles_json,
+                       product_validation_json, is_approved, is_rejected,
+                       is_saved, is_added_to_calendar, created_at, updated_at
+                FROM topic_validation_reports WHERE channel_id = ?
+            """
+            params: List[Any] = [channel_id]
+            if status is not None:
+                query += " AND readiness_status = ?"
+                params.append(status)
+            if is_approved is not None:
+                query += " AND is_approved = ?"
+                params.append(1 if is_approved else 0)
+            if is_saved is not None:
+                query += " AND is_saved = ?"
+                params.append(1 if is_saved else 0)
+            query += " ORDER BY composite_opportunity_score DESC, id DESC;"
+
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [
+                TopicValidationReport(
+                    id=r[0],
+                    channel_id=r[1],
+                    topic=r[2],
+                    primary_keyword=r[3],
+                    secondary_keywords=json.loads(r[4]) if r[4] else [],
+                    search_intent=r[5],
+                    target_viewer=r[6],
+                    niche_match_score=r[7],
+                    intent_clarity_score=r[8],
+                    keyword_evidence_score=r[9],
+                    recent_video_evidence_score=r[10],
+                    own_channel_overlap_score=r[11],
+                    product_relevance_score=r[12],
+                    composite_opportunity_score=r[13],
+                    confidence_tier=r[14],
+                    readiness_status=r[15],
+                    what_supports_idea=json.loads(r[16]) if r[16] else [],
+                    what_weakens_idea=json.loads(r[17]) if r[17] else [],
+                    what_remains_unknown=json.loads(r[18]) if r[18] else [],
+                    further_research_needed=json.loads(r[19]) if r[19] else [],
+                    gap_state=r[20],
+                    queries_executed=json.loads(r[21]) if r[21] else [],
+                    recent_videos_count=r[22],
+                    competitor_videos=json.loads(r[23]) if r[23] else [],
+                    suggested_angles=json.loads(r[24]) if r[24] else [],
+                    product_validation=json.loads(r[25]) if r[25] else None,
+                    is_approved=bool(r[26]),
+                    is_rejected=bool(r[27]),
+                    is_saved=bool(r[28]),
+                    is_added_to_calendar=bool(r[29]),
+                    created_at=r[30],
+                    updated_at=r[31],
+                )
+                for r in rows
+            ]
+
+    def get_topic_validation_report_by_id(self, report_id: int) -> Optional[TopicValidationReport]:
+        """Retrieve a specific topic validation report by ID."""
+        with self.get_connection() as conn:
+            r = conn.execute(
+                """
+                SELECT id, channel_id, topic, primary_keyword, secondary_keywords_json,
+                       search_intent, target_viewer, niche_match_score,
+                       intent_clarity_score, keyword_evidence_score,
+                       recent_video_evidence_score, own_channel_overlap_score,
+                       product_relevance_score, composite_opportunity_score,
+                       confidence_tier, readiness_status, what_supports_idea_json,
+                       what_weakens_idea_json, what_remains_unknown_json,
+                       further_research_needed_json, gap_state,
+                       queries_executed_json, recent_videos_count,
+                       competitor_videos_json, suggested_angles_json,
+                       product_validation_json, is_approved, is_rejected,
+                       is_saved, is_added_to_calendar, created_at, updated_at
+                FROM topic_validation_reports WHERE id = ?;
+                """,
+                (report_id,),
+            ).fetchone()
+            if not r:
+                return None
+            return TopicValidationReport(
+                id=r[0],
+                channel_id=r[1],
+                topic=r[2],
+                primary_keyword=r[3],
+                secondary_keywords=json.loads(r[4]) if r[4] else [],
+                search_intent=r[5],
+                target_viewer=r[6],
+                niche_match_score=r[7],
+                intent_clarity_score=r[8],
+                keyword_evidence_score=r[9],
+                recent_video_evidence_score=r[10],
+                own_channel_overlap_score=r[11],
+                product_relevance_score=r[12],
+                composite_opportunity_score=r[13],
+                confidence_tier=r[14],
+                readiness_status=r[15],
+                what_supports_idea=json.loads(r[16]) if r[16] else [],
+                what_weakens_idea=json.loads(r[17]) if r[17] else [],
+                what_remains_unknown=json.loads(r[18]) if r[18] else [],
+                further_research_needed=json.loads(r[19]) if r[19] else [],
+                gap_state=r[20],
+                queries_executed=json.loads(r[21]) if r[21] else [],
+                recent_videos_count=r[22],
+                competitor_videos=json.loads(r[23]) if r[23] else [],
+                suggested_angles=json.loads(r[24]) if r[24] else [],
+                product_validation=json.loads(r[25]) if r[25] else None,
+                is_approved=bool(r[26]),
+                is_rejected=bool(r[27]),
+                is_saved=bool(r[28]),
+                is_added_to_calendar=bool(r[29]),
+                created_at=r[30],
+                updated_at=r[31],
+            )
+
+    def update_topic_validation_report(self, report_id: int, updates: Dict[str, Any]) -> bool:
+        """Update specific fields of a topic validation report."""
+        if not updates:
+            return False
+        now_iso = datetime.now(timezone.utc).isoformat()
+        updates["updated_at"] = now_iso
+        cols = []
+        vals = []
+        for k, v in updates.items():
+            cols.append(f"{k} = ?")
+            if isinstance(v, (dict, list)):
+                vals.append(json.dumps(v))
+            elif isinstance(v, bool):
+                vals.append(1 if v else 0)
+            else:
+                vals.append(v)
+        vals.append(report_id)
+        sql = f"UPDATE topic_validation_reports SET {', '.join(cols)} WHERE id = ?;"
+        with self.get_connection() as conn:
+            cur = conn.execute(sql, tuple(vals))
+            return cur.rowcount > 0
+
+    def delete_topic_validation_report(self, report_id: int) -> bool:
+        """Delete a topic validation report by ID."""
+        with self.get_connection() as conn:
+            cur = conn.execute("DELETE FROM topic_validation_reports WHERE id = ?;", (report_id,))
+            return cur.rowcount > 0
+
+    def save_competitor_video_record(self, record: CompetitorVideoRecord) -> str:
+        """Save or replace a competitor video record."""
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO competitor_video_records (
+                    video_id, title, channel_title, published_at, view_count,
+                    duration, video_url, matching_query, relevance_reason,
+                    relative_age_days, views_per_day, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(video_id) DO UPDATE SET
+                    title = excluded.title,
+                    channel_title = excluded.channel_title,
+                    published_at = excluded.published_at,
+                    view_count = excluded.view_count,
+                    duration = excluded.duration,
+                    video_url = excluded.video_url,
+                    matching_query = excluded.matching_query,
+                    relevance_reason = excluded.relevance_reason,
+                    relative_age_days = excluded.relative_age_days,
+                    views_per_day = excluded.views_per_day;
+                """,
+                (
+                    record.video_id,
+                    record.title,
+                    record.channel_title,
+                    record.published_at,
+                    record.view_count,
+                    record.duration,
+                    record.video_url,
+                    record.matching_query,
+                    record.relevance_reason,
+                    record.relative_age_days,
+                    record.views_per_day,
+                    record.created_at or datetime.now(timezone.utc).isoformat(),
+                ),
+            )
+            return record.video_id
+
+    def get_competitor_videos_by_query(self, query: str, limit: int = 20) -> List[CompetitorVideoRecord]:
+        """Retrieve competitor videos matching a query string."""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT video_id, title, channel_title, published_at, view_count,
+                       duration, video_url, matching_query, relevance_reason,
+                       relative_age_days, views_per_day, created_at
+                FROM competitor_video_records WHERE matching_query LIKE ?
+                ORDER BY view_count DESC LIMIT ?;
+                """,
+                (f"%{query}%", limit),
+            ).fetchall()
+            return [
+                CompetitorVideoRecord(
+                    video_id=r[0],
+                    title=r[1],
+                    channel_title=r[2],
+                    published_at=r[3],
+                    view_count=r[4],
+                    duration=r[5],
+                    video_url=r[6],
+                    matching_query=r[7],
+                    relevance_reason=r[8],
+                    relative_age_days=r[9],
+                    views_per_day=r[10],
+                    created_at=r[11],
+                )
+                for r in rows
+            ]
+
 
     # --------------------------------------------------------------------------
     # Database Diagnostics & Backup Facilities

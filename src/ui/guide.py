@@ -836,6 +836,490 @@ def render_contextual_help(section_key: str) -> None:
 
 
 # ==============================================================================
+# 4B. Beginner-Friendly 5-Point Page Guide (Phase 28 Complete Simplification)
+# ==============================================================================
+
+BEGINNER_PAGE_GUIDES: Dict[str, Dict[str, Any]] = {
+    "keyword_research": {
+        "title": "Find Keywords (YouTube Autocomplete)",
+        "icon": "🔍",
+        "what_is_this": "This tool searches YouTube's live search box to find what actual viewers type every day. You get authentic, real-time search queries directly from YouTube without synthetic volume guesses.",
+        "what_should_i_enter": "Enter a video topic, product name, or question you want to create a video about.",
+        "example_input": "best wireless earbuds",
+        "how_do_i_use_it": [
+            "Type your video topic into the main search box.",
+            "Click 'Find Keywords' to fetch real-time suggestions from YouTube.",
+            "Review the list of search phrases to see what viewers want to watch.",
+            "Click 'Select' or 'Check Competing Videos' on any keyword that fits your idea.",
+        ],
+        "what_will_i_get": "A clear list of real search queries people type on YouTube, organized by viewer intent and relevance to your topic.",
+        "what_should_i_do_next": "Review your keywords in 'Keyword Results' or click 'Check Competing Videos' to see what existing videos already rank.",
+        "next_page": "Keyword Results / Competing Videos",
+    },
+    "keyword_results": {
+        "title": "Keyword Results & Groups",
+        "icon": "📊",
+        "what_is_this": "Your keyword workspace to review, filter, group similar topics, and export the keywords discovered from your search.",
+        "what_should_i_enter": "No typing needed. Use the filter dropdowns to narrow down keywords by viewer intent, tail length, or topic group.",
+        "example_input": "Filter by 'Tutorial', 'Review', or 'Comparison'",
+        "how_do_i_use_it": [
+            "Use the filters to find high-intent keywords like tutorials or product reviews.",
+            "Check the Topic Potential score to compare how closely each keyword matches your starting topic.",
+            "Group similar keywords together so you can plan related videos.",
+            "Export your list to CSV or Excel, or copy them to your clipboard.",
+        ],
+        "what_will_i_get": "A structured table of keywords with clear intent categories, relevance estimates, and topic groups.",
+        "what_should_i_do_next": "Select 1 to 3 top keywords and click 'Check Competing Videos' to see what videos currently rank.",
+        "next_page": "Check Competing Videos",
+    },
+    "pattern_generator": {
+        "title": "Find More Keyword Ideas (Pattern Generator)",
+        "icon": "🧩",
+        "what_is_this": "An offline idea generator that combines your topic with proven YouTube creator frameworks (questions, comparisons, beginner guides, common mistakes) to create dozens of fresh video ideas.",
+        "what_should_i_enter": "Enter a root keyword or broad topic name.",
+        "example_input": "video editing",
+        "how_do_i_use_it": [
+            "Enter your topic and choose your language (English or Bangla).",
+            "Select the pattern categories you want (Questions, Comparisons, Best Lists, Mistakes).",
+            "Click 'Generate Patterns' to produce structured search queries.",
+            "Click 'Test in Autocomplete' on any pattern to verify viewer demand on YouTube.",
+        ],
+        "what_will_i_get": "Dozens of high-intent search query variations across proven YouTube content archetypes.",
+        "what_should_i_do_next": "Pick a promising pattern and test it in 'Find Keywords' to see live YouTube autocomplete predictions.",
+        "next_page": "Find Keywords",
+    },
+    "video_research": {
+        "title": "Check Competing Videos (YouTube Video Research)",
+        "icon": "🎥",
+        "what_is_this": "Inspect real public YouTube videos ranking for your keyword: view counts, publication dates, and upload velocity to see if small creators can rank.",
+        "what_should_i_enter": "Enter the exact keyword you want to make a video about.",
+        "example_input": "best noise cancelling headphones 2026",
+        "how_do_i_use_it": [
+            "Enter your target keyword and click 'Search Videos'.",
+            "Check how recent the ranking videos are (last 60 days vs older legacy videos).",
+            "Look at view velocity (views per day) and creator channel sizes.",
+            "Identify content gaps: What questions did existing videos fail to answer?",
+        ],
+        "what_will_i_get": "A list of top-ranking competitor videos, publication dates, view counts, and an evidence-based gap summary.",
+        "what_should_i_do_next": "If there is healthy demand and outdated competition, head to 'Content Opportunities' or 'Topic Validation' to plan your video.",
+        "next_page": "Content Opportunities",
+    },
+    "content_opportunities": {
+        "title": "Content Opportunities & Title Workshop",
+        "icon": "💡",
+        "what_is_this": "Bridges keyword discovery and competitor video analysis to spot content gaps, craft clickable titles, and outline video hooks.",
+        "what_should_i_enter": "Select a keyword or topic cluster from your active research session.",
+        "example_input": "Select an active topic cluster",
+        "how_do_i_use_it": [
+            "Review ranked topic opportunities based on competitor gap analysis.",
+            "Open the Title & Hook Workshop to brainstorm high-converting titles.",
+            "Draft your target viewer intent and core viewer promise.",
+            "Add approved opportunities to your production calendar.",
+        ],
+        "what_will_i_get": "Ranked content opportunities with transparent topic potential scores and clickable video title formulas.",
+        "what_should_i_do_next": "Open 'Description Studio' to write your YouTube description or 'Content Strategy Autopilot' to schedule your video.",
+        "next_page": "Description Studio",
+    },
+    "product_opportunities": {
+        "title": "Find Products to Review (Niche Product Discovery)",
+        "icon": "📦",
+        "what_is_this": "Discovers physical and digital products in your niche with active viewer interest, helping you find honest review and comparison opportunities.",
+        "what_should_i_enter": "Choose your channel niche or enter a product category.",
+        "example_input": "wireless lavalier microphone",
+        "how_do_i_use_it": [
+            "Select your niche or enter a product category.",
+            "Click 'Scan Niche Products' to find products viewers are searching for.",
+            "Review recent YouTube video coverage to find underserved products.",
+            "Identify products with strong viewer interest but few recent videos.",
+        ],
+        "what_will_i_get": "A prioritized list of niche products with verified video coverage counts and transparent opportunity scores.",
+        "what_should_i_do_next": "Click 'Add to Planner' to conduct detailed affiliate research and write your video review brief.",
+        "next_page": "Affiliate Content Planner",
+    },
+    "product_planner": {
+        "title": "Affiliate Content Planner",
+        "icon": "🏷️",
+        "what_is_this": "A production workspace to plan product review videos, evaluate transparent scores, check official specs, and prepare FTC-compliant video briefs.",
+        "what_should_i_enter": "Select a shortlisted product or enter a product model name.",
+        "example_input": "Rode Wireless Pro",
+        "how_do_i_use_it": [
+            "Review the multi-factor scoring breakdown (relevance, coverage, effort).",
+            "Verify specifications and check product availability.",
+            "Generate a structured 14-section content brief for filming.",
+            "Copy affiliate disclosure reminders for your video description.",
+        ],
+        "what_will_i_get": "A complete video production brief with review angles, hands-on testing requirements, and compliance notices.",
+        "what_should_i_do_next": "Record your video and open 'Description Studio' to draft an optimized, compliant YouTube description.",
+        "next_page": "Description Studio",
+    },
+    "topic_validation": {
+        "title": "Topic Validation & Growth Engine",
+        "icon": "🎯",
+        "what_is_this": "A pre-recommendation validator that audits candidate ideas against your channel uploads, 60-day competitor velocity, and self-cannibalization risks.",
+        "what_should_i_enter": "Enter a candidate topic, primary keyword, and optional product name.",
+        "example_input": "Notion Setup for Small Business",
+        "how_do_i_use_it": [
+            "Select which of your 4 channels this topic is for.",
+            "Enter your topic and keyword, then click 'Validate Topic'.",
+            "Review the 5-point report: Supports, Weakens, Unknowns, Research Needed, Readiness.",
+            "Generate distinct video angles (Beginner Guide, Tutorial, Comparison, Mistakes).",
+        ],
+        "what_will_i_get": "An evidence-based readiness report ('Ready for Human Review', 'Needs More Research', or 'Not Recommended') with multi-angle suggestions.",
+        "what_should_i_do_next": "Approve the idea to add it to your calendar, or choose a differentiated angle to avoid dividing your audience.",
+        "next_page": "Content Strategy Autopilot",
+    },
+    "strategy_autopilot": {
+        "title": "Content Strategy Autopilot",
+        "icon": "🧭",
+        "what_is_this": "An overarching planning studio for all 4 channels to organize content pillars, schedule weekly upload capacity, and track video production stages.",
+        "what_should_i_enter": "Select one of your four channels to view its pillars, calendar, and active projects.",
+        "example_input": "Select Channel 1 (TechGear Pulse)",
+        "how_do_i_use_it": [
+            "Set your weekly publishing capacity (e.g., 2 videos per week).",
+            "Organize topic clusters under core channel pillars.",
+            "Schedule upcoming videos on the capacity-aware calendar.",
+            "Track projects from Brief to Scripting, Filming, Editing, and Published.",
+        ],
+        "what_will_i_get": "A balanced production schedule, topic cluster roadmap, and kanban-style workflow.",
+        "what_should_i_do_next": "Advance your current project to 'Drafting Description' and open 'SEO & Content Audit' before publishing.",
+        "next_page": "SEO & Content Audit",
+    },
+    "seo_audit": {
+        "title": "SEO & Content Quality Checker",
+        "icon": "🩺",
+        "what_is_this": "Audits video titles, descriptions, tag structures, and FTC affiliate compliance across 25 quality checkpoints before uploading to YouTube.",
+        "what_should_i_enter": "Paste your video title, description text, and target keywords, or inspect a live YouTube video URL.",
+        "example_input": "Paste title and description draft",
+        "how_do_i_use_it": [
+            "Select your channel profile to apply channel-specific SEO rules.",
+            "Paste your video title and description.",
+            "Click 'Run SEO Audit' to see your 0-100 quality scorecard.",
+            "Review recommendations for title length, keyword placement, links, and disclosures.",
+        ],
+        "what_will_i_get": "A detailed scorecard across 5 categories with clear pass/fail badges and actionable copy-paste fixes.",
+        "what_should_i_do_next": "Apply the suggested fixes to your metadata and upload to YouTube with confidence.",
+        "next_page": "YouTube Studio Upload",
+    },
+    "morning_report": {
+        "title": "Daily Morning Idea Report",
+        "icon": "🌅",
+        "what_is_this": "An automated daily briefing delivering 3 to 5 fresh, gap-validated video ideas for each of your four channels every morning.",
+        "what_should_i_enter": "No input needed. Select your channel to view today's validated ideas.",
+        "example_input": "Select Channel 1, 2, 3, or 4",
+        "how_do_i_use_it": [
+            "Review today's recommended topics and 60-day competitor gap evidence.",
+            "Inspect why each topic was recommended and what competitor videos were found.",
+            "Click 'Approve' to send an idea directly to your Content Calendar.",
+            "Click 'Create Brief' to generate an outline immediately.",
+        ],
+        "what_will_i_get": "Daily evidence-backed video recommendations with zero fabricated search metrics.",
+        "what_should_i_do_next": "Approve today's top idea and open 'Topic Validation' or 'Description Studio' to begin production.",
+        "next_page": "Topic Validation",
+    },
+    "description_studio": {
+        "title": "Description Studio (8-Part Framework)",
+        "icon": "✍️",
+        "what_is_this": "Builds high-converting, search-optimized YouTube descriptions using an 8-part creator framework with character counters and compliance notices.",
+        "what_should_i_enter": "Enter your video title, summary, key links, timestamps, and gear list.",
+        "example_input": "Fill out the 8 description sections",
+        "how_do_i_use_it": [
+            "Fill out the 8 modular sections (Hook, Summary, Timestamps, Links, Disclosures).",
+            "Monitor the character counter to stay under YouTube's 5,000-character limit.",
+            "Toggle FTC affiliate disclosures to automatically inject compliant notices.",
+            "Click 'Copy Full Description' to paste directly into YouTube Studio.",
+        ],
+        "what_will_i_get": "A formatted, search-optimized video description ready for YouTube upload.",
+        "what_should_i_do_next": "Run a quick 'SEO & Content Audit' to verify keyword density and character counts.",
+        "next_page": "SEO & Content Audit",
+    },
+    "analytics": {
+        "title": "Channel Analytics & Growth Intelligence",
+        "icon": "📈",
+        "what_is_this": "Connect your YouTube channel via official OAuth 2.0 to analyze actual views, watch time, subscriber conversion, and topic performance trends.",
+        "what_should_i_enter": "Authorize your YouTube channel or inspect local historical telemetry.",
+        "example_input": "Authorize Google / YouTube OAuth",
+        "how_do_i_use_it": [
+            "View channel performance curves over 7, 28, or 90-day windows.",
+            "Inspect which topic clusters drive the highest subscriber conversion.",
+            "Review growth coaching insights based on your own actual upload history.",
+        ],
+        "what_will_i_get": "Actionable performance analytics grounded in verified YouTube reporting data.",
+        "what_should_i_do_next": "Use top-performing topic clusters to plan your next video in 'Content Strategy Autopilot'.",
+        "next_page": "Content Strategy Autopilot",
+    },
+    "channel_portfolio": {
+        "title": "Channel Setup (4 Channels Portfolio)",
+        "icon": "📺",
+        "what_is_this": "Configure and manage profiles for each of your four YouTube channels: niches, audiences, languages, exclusions, and affiliate settings.",
+        "what_should_i_enter": "Channel names, handles, niches, sub-niches, and target audience descriptions.",
+        "example_input": "Channel Name: TechGear Pulse, Niche: Consumer Tech",
+        "how_do_i_use_it": [
+            "Select Channel 1, 2, 3, or 4 to edit its settings.",
+            "Define your channel's niche, target viewer, and affiliate preferences.",
+            "Add existing published topics to prevent creating duplicate content.",
+            "Click 'Save Channel Profile' to persist your settings.",
+        ],
+        "what_will_i_get": "Isolated channel profiles that keep your research, recommendations, and calendars separate.",
+        "what_should_i_do_next": "Switch to your active channel using the top channel switcher and start researching!",
+        "next_page": "Find Keywords",
+    },
+    "dashboard": {
+        "title": "Home & Research Dashboard",
+        "icon": "📊",
+        "what_is_this": "Your home base showing recent research sessions, stored keyword counts, database health, and one-click quick launch shortcuts.",
+        "what_should_i_enter": "No typing needed. Use the quick launch cards or select a recent session to resume work.",
+        "example_input": "Click 'Start New Keyword Research'",
+        "how_do_i_use_it": [
+            "Check system status (SQLite database health and stored keyword count).",
+            "Click 'Start New Keyword Research' to begin researching a new video topic.",
+            "Click any recent search session to reopen its results instantly.",
+        ],
+        "what_will_i_get": "A clear overview of your workspace, recent activity, and one-click shortcuts.",
+        "what_should_i_do_next": "Click 'Find Keywords' to start your first research session!",
+        "next_page": "Find Keywords",
+    },
+    "saved_research": {
+        "title": "Saved Research & Project History",
+        "icon": "💾",
+        "what_is_this": "Access all research sessions and keyword lists saved in your local SQLite database.",
+        "what_should_i_enter": "Search by project name or filter by date.",
+        "example_input": "Search saved project names",
+        "how_do_i_use_it": [
+            "Select a saved project to view all its discovered keywords.",
+            "Rename projects, export to CSV/Excel, or delete old sessions.",
+            "Click 'Resume in Results' to reload a session into the active workspace.",
+        ],
+        "what_will_i_get": "Full access to your historical research with zero data loss.",
+        "what_should_i_do_next": "Reload a saved project and click 'Check Competing Videos' to see what has changed.",
+        "next_page": "Check Competing Videos",
+    },
+    "research_monitor": {
+        "title": "Research Monitor & Snapshot Tracking",
+        "icon": "📡",
+        "what_is_this": "Save reusable research queries to track how competitor video coverage and keyword rankings change over time.",
+        "what_should_i_enter": "Save an active query as a monitoring target.",
+        "example_input": "Target: 'best desk accessories'",
+        "how_do_i_use_it": [
+            "Create a monitoring target for key search terms in your niche.",
+            "Run manual or scheduled check-ins to capture snapshots.",
+            "Compare snapshots to see newly published competitor videos.",
+        ],
+        "what_will_i_get": "Empirical change reports showing new competitor videos and shifting search terms.",
+        "what_should_i_do_next": "Spot newly emerging gaps and create timely response videos.",
+        "next_page": "Content Opportunities",
+    },
+    "settings": {
+        "title": "Settings & Data Sources",
+        "icon": "⚙️",
+        "what_is_this": "Manage your local SQLite database, cache settings, backup creation, and YouTube Data API v3 key configuration.",
+        "what_should_i_enter": "Optional YouTube Data API v3 key, cache retention preferences, or backup file selection.",
+        "example_input": "YouTube API Key or Backup File",
+        "how_do_i_use_it": [
+            "Check API connection status and local SQLite WAL health.",
+            "Clear 24-hour autocomplete cache if you want completely fresh results.",
+            "Create a verified database backup before major updates.",
+        ],
+        "what_will_i_get": "Full control over your local data storage and external API integrations.",
+        "what_should_i_do_next": "Return to 'Find Keywords' to continue researching.",
+        "next_page": "Find Keywords",
+    },
+    "user_guide": {
+        "title": "User Guide & Interactive Playbooks",
+        "icon": "📖",
+        "what_is_this": "Comprehensive, step-by-step documentation for every workflow, feature, and tool in Keyword Studio.",
+        "what_should_i_enter": "Browse by topic or search for a specific question.",
+        "example_input": "Select a feature playbook",
+        "how_do_i_use_it": [
+            "Select any feature playbook (Keyword Research, Competitor Analysis, Affiliate Planning).",
+            "Follow the numbered step-by-step guides and best practice tips.",
+            "Review common pitfalls to avoid wasted research time.",
+        ],
+        "what_will_i_get": "Clear, practical guidance on how to make the most of Keyword Studio.",
+        "what_should_i_do_next": "Try out the steps in the live tools!",
+        "next_page": "Dashboard",
+    },
+    "studio_auth": {
+        "title": "Studio Profile & Local Vault",
+        "icon": "🔐",
+        "what_is_this": "Manage your local creator identity, workspace environment, and API security vault. All credentials stay strictly on your local computer.",
+        "what_should_i_enter": "Your creator nickname and optional API credentials.",
+        "example_input": "Creator Name: Studio Lead",
+        "how_do_i_use_it": [
+            "Customize your local profile name and role.",
+            "Safely configure optional YouTube API keys in the local vault.",
+            "Inspect local security diagnostics and storage isolation.",
+        ],
+        "what_will_i_get": "A personalized local workspace with securely stored API preferences.",
+        "what_should_i_do_next": "Head to the Dashboard to begin working.",
+        "next_page": "Dashboard",
+    },
+}
+
+# Alias mapping from page titles / constants to beginner guide keys
+PAGE_GUIDE_KEY_MAP: Dict[str, str] = {
+    "keyword_research": "keyword_research",
+    "keyword_discovery": "keyword_research",
+    "New Keyword Research": "keyword_research",
+    "🔍 New Keyword Research": "keyword_research",
+    "keyword_results": "keyword_results",
+    "Keyword Results": "keyword_results",
+    "📋 Keyword Results": "keyword_results",
+    "pattern_generator": "pattern_generator",
+    "Pattern Generator": "pattern_generator",
+    "🧩 Pattern Generator": "pattern_generator",
+    "video_research": "video_research",
+    "video_serp": "video_research",
+    "YouTube Video Research": "video_research",
+    "🎥 YouTube Video Research": "video_research",
+    "content_opportunities": "content_opportunities",
+    "Content Opportunities": "content_opportunities",
+    "💡 Content Opportunities": "content_opportunities",
+    "product_opportunities": "product_opportunities",
+    "Niche Product Opportunity Finder": "product_opportunities",
+    "📦 Niche Product Opportunity Finder": "product_opportunities",
+    "product_planner": "product_planner",
+    "Product Opportunity Planner": "product_planner",
+    "🏷️ Product Opportunity Planner": "product_planner",
+    "topic_validation": "topic_validation",
+    "Topic Validation & Growth Intelligence": "topic_validation",
+    "🎯 Topic Validation & Growth Intelligence": "topic_validation",
+    "strategy_autopilot": "strategy_autopilot",
+    "Content Strategy Autopilot": "strategy_autopilot",
+    "🧭 Content Strategy Autopilot": "strategy_autopilot",
+    "seo_audit": "seo_audit",
+    "SEO & Content Audit": "seo_audit",
+    "🩺 SEO & Content Audit": "seo_audit",
+    "morning_report": "morning_report",
+    "Morning Idea Report": "morning_report",
+    "🌅 Morning Idea Report": "morning_report",
+    "description_studio": "description_studio",
+    "Description Studio": "description_studio",
+    "✍️ Description Studio": "description_studio",
+    "analytics": "analytics",
+    "Analytics & Growth Intelligence": "analytics",
+    "📈 Analytics & Growth Intelligence": "analytics",
+    "channel_portfolio": "channel_portfolio",
+    "Channel Portfolio": "channel_portfolio",
+    "📺 Channel Portfolio": "channel_portfolio",
+    "dashboard": "dashboard",
+    "Dashboard": "dashboard",
+    "📊 Dashboard": "dashboard",
+    "saved_research": "saved_research",
+    "Saved Research": "saved_research",
+    "💾 Saved Research": "saved_research",
+    "research_monitor": "research_monitor",
+    "Research Monitor": "research_monitor",
+    "📡 Research Monitor": "research_monitor",
+    "settings": "settings",
+    "settings_backup": "settings",
+    "Settings & Data Sources": "settings",
+    "⚙️ Settings & Data Sources": "settings",
+    "user_guide": "user_guide",
+    "User Guide": "user_guide",
+    "📖 User Guide": "user_guide",
+    "studio_auth": "studio_auth",
+    "Studio Profile & Auth": "studio_auth",
+    "🔐 Studio Profile & Auth": "studio_auth",
+}
+
+
+def render_beginner_page_guide(page_identifier: str) -> None:
+    """Render an Apple-inspired 5-point beginner explanation drawer on any major page.
+
+    Answers:
+    1. WHAT IS THIS? (Short explanation of purpose)
+    2. WHAT SHOULD I ENTER? (Clear input explanation + realistic example)
+    3. HOW DO I USE IT? (3 to 5 short steps)
+    4. WHAT WILL I GET? (Expected output)
+    5. WHAT SHOULD I DO NEXT? (Real next action and destination)
+    """
+    key = PAGE_GUIDE_KEY_MAP.get(page_identifier, page_identifier.lower().replace(" ", "_"))
+    guide = BEGINNER_PAGE_GUIDES.get(key)
+    if not guide:
+        # Fallback to general keyword research guide if not matched
+        guide = BEGINNER_PAGE_GUIDES.get("keyword_research")
+        if not guide:
+            return
+
+    with st.expander(f"💡 Learn How This Works — {guide['title']} (1-Minute Guide)", expanded=False):
+        st.markdown(
+            f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 1.1rem 1.25rem; margin-bottom: 0.75rem;">
+                <div style="font-size: 0.8rem; font-weight: 700; color: #2563EB; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">
+                    1. WHAT IS THIS TOOL?
+                </div>
+                <div style="font-size: 0.95rem; font-weight: 600; color: #0F172A; line-height: 1.45;">
+                    {guide['what_is_this']}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        col_left, col_right = st.columns([1.1, 1.2])
+
+        with col_left:
+            st.markdown(
+                f"""
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 9px; padding: 1rem; margin-bottom: 0.75rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;">
+                        2. WHAT SHOULD I ENTER?
+                    </div>
+                    <div style="font-size: 0.86rem; color: #1E293B; line-height: 1.4; margin-bottom: 0.5rem;">
+                        {guide['what_should_i_enter']}
+                    </div>
+                    <div style="font-size: 0.78rem; color: #64748B;">
+                        <b>Example:</b> <code style="background: #EFF6FF; color: #1D4ED8; padding: 2px 7px; border-radius: 4px; font-weight: 600;">{guide['example_input']}</code>
+                    </div>
+                </div>
+
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 9px; padding: 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.25rem;">
+                        4. WHAT WILL I GET?
+                    </div>
+                    <div style="font-size: 0.86rem; color: #1E293B; line-height: 1.4;">
+                        {guide['what_will_i_get']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with col_right:
+            steps_html = "".join([
+                f"""
+                <div style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px;">
+                    <span style="background: #2563EB; color: #FFFFFF; font-size: 0.72rem; font-weight: 700; border-radius: 50%; min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;">{idx}</span>
+                    <span style="font-size: 0.85rem; color: #334155; line-height: 1.35;">{step}</span>
+                </div>
+                """
+                for idx, step in enumerate(guide["how_do_i_use_it"], 1)
+            ])
+
+            st.markdown(
+                f"""
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 9px; padding: 1rem; margin-bottom: 0.75rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.5rem;">
+                        3. HOW DO I USE IT? (QUICK STEPS)
+                    </div>
+                    {steps_html}
+                </div>
+
+                <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 9px; padding: 0.85rem 1rem;">
+                    <div style="font-size: 0.75rem; font-weight: 700; color: #15803D; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.2rem;">
+                        5. WHAT SHOULD I DO NEXT?
+                    </div>
+                    <div style="font-size: 0.84rem; color: #166534; line-height: 1.4;">
+                        👉 {guide['what_should_i_do_next']}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+
+# ==============================================================================
 # 5. First-Run Onboarding Engine (7 Distinct Creator Goals)
 # ==============================================================================
 

@@ -149,6 +149,8 @@ from src.intelligence import (
     growth_engine,
     ContentStrategyAutopilot,
     content_strategy_autopilot,
+    TopicValidationEngine,
+    topic_validation_engine,
 )
 from src.providers.youtube_analytics import (
     YouTubeAnalyticsProvider,
@@ -198,6 +200,13 @@ from src.models import (
     ContentBriefDocument,
     ProductionWorkflowProject,
     ChannelStrategySettings,
+    TopicReadinessStatus,
+    AngleType,
+    TopicAngle,
+    OwnChannelOverlapResult,
+    CompetitorVideoRecord,
+    ProductValidationRecord,
+    TopicValidationReport,
 )
 from src.providers.affiliate import (
     BaseAffiliateProvider,
@@ -234,6 +243,7 @@ try:
         PAGE_SEO_AUDIT,
         PAGE_ANALYTICS,
         PAGE_STRATEGY,
+        PAGE_VALIDATION,
         PAGE_SAVED,
         PAGE_SERP,
         PAGE_USER_GUIDE,
@@ -243,6 +253,7 @@ try:
 
         apply_custom_styles,
         render_channel_switcher,
+        render_beginner_page_guide,
         render_contextual_help,
         render_copy_box,
         render_empty_state,
@@ -289,6 +300,7 @@ except ImportError:
         PAGE_SEO_AUDIT,
         PAGE_ANALYTICS,
         PAGE_STRATEGY,
+        PAGE_VALIDATION,
         PAGE_SAVED,
 
         PAGE_SERP,
@@ -298,6 +310,7 @@ except ImportError:
         PAGE_VIDEO_RESEARCH,
         apply_custom_styles,
         render_channel_switcher,
+        render_beginner_page_guide,
         render_contextual_help,
         render_copy_box,
         render_empty_state,
@@ -833,12 +846,13 @@ def render_page_landing(is_ready: bool) -> None:
     """Render the high-impact SaaS Landing Page and Interactive Product Showcase (Phase 16)."""
     render_page_header(
         title="Overview & Showcase",
-        subtitle="Next-generation YouTube audience intelligence, recursive keyword discovery & competitor gap analysis.",
+        subtitle="Explore all YouTube keyword discovery, competitor video analysis, and content planning tools.",
         category="WORKSPACE",
         badge_text=f"v{APP_VERSION} Pro",
         badge_type="primary",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("dashboard")
 
     # 1. Premium Hero Section
     st.markdown(
@@ -1309,12 +1323,13 @@ def render_page_dashboard(is_ready: bool, recent_searches: List[Dict[str, Any]])
     """Render the Overview Dashboard page."""
     render_page_header(
         title="Dashboard",
-        subtitle="Real-time research session telemetry, storage status, and intelligent workflow recommendations.",
+        subtitle="Overview of your recent research sessions, stored keywords, and quick-launch tools.",
         category="WORKSPACE",
         badge_text="Live Ready" if is_ready else "Offline",
         badge_type="success" if is_ready else "warning",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("dashboard")
 
     # Aggregated Database Stats
     db_stats = db_manager.get_database_stats() if is_ready else {}
@@ -1429,19 +1444,20 @@ def render_page_new_research(is_ready: bool) -> None:
     """Render the New Keyword Research configuration page."""
     render_page_header(
         title="New Keyword Research",
-        subtitle="Enter a seed keyword to retrieve authentic YouTube autocomplete dropdown suggestions, or perform controlled A–Z, numeric, and preposition expansions.",
+        subtitle="Find what real viewers are searching for on YouTube. Enter a topic to see authentic autocomplete suggestions.",
         category="WORKSPACE",
         badge_text="Autocomplete Active",
         badge_type="primary",
         provenance="autocomplete",
     )
+    render_beginner_page_guide("keyword_research")
     render_contextual_help("keyword_discovery")
     render_interactive_tour("keyword_studio")
 
     rerun_p = st.session_state.get("rerun_params", {})
     default_seed_val = (
         st.session_state.get("active_seed_input")
-        or (", ".join(rerun_p.get("seeds", [])) if rerun_p.get("seeds") else (st.session_state.last_query or "BEST CAR WAX"))
+        or (", ".join(rerun_p.get("seeds", [])) if rerun_p.get("seeds") else (st.session_state.last_query or "best wireless earbuds"))
     )
     default_lang_code = rerun_p.get("language", "en")
     default_country_code = rerun_p.get("country", "US")
@@ -1449,32 +1465,46 @@ def render_page_new_research(is_ready: bool) -> None:
     trigger_az_from_panel = False
 
     with st.container():
-        # Project Name & Seed Input
-        col_proj, col_seed = st.columns([1, 2])
-        with col_proj:
-            project_name_input = st.text_input(
-                "Project Name (Optional)",
-                value=rerun_p.get("project_name", ""),
-                placeholder="e.g. Car Care 2026",
-                help="Custom project name for tracking in SQLite history.",
-            )
+        # Beginner-focused prompt card
+        st.markdown(
+            """
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 1.15rem 1.4rem; margin-bottom: 1.15rem; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);">
+                <div style="font-size: 1.12rem; font-weight: 700; color: #0F172A; margin-bottom: 0.25rem;">
+                    What keyword or topic do you want to make a video about?
+                </div>
+                <div style="font-size: 0.88rem; color: #64748B; line-height: 1.45;">
+                    Start with a broad topic, product name, or viewer question. We'll search real YouTube autocomplete predictions to show you what people want to watch right now.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Primary Search Input and Action Buttons
+        col_seed, col_fetch, col_clr = st.columns([3.5, 1.3, 0.8])
         with col_seed:
             seed_input = st.text_input(
-                "Seed Keyword(s)",
+                "What keyword or topic do you want to make a video about?",
                 value=default_seed_val,
-                help="Enter a seed keyword (e.g. 'BEST CAR WAX') or multiple comma-separated seeds.",
-                placeholder="e.g. BEST CAR WAX, python tutorial, data science",
+                help="Enter a seed keyword (e.g. 'best wireless earbuds', 'python tutorial', 'notion setup').",
+                placeholder="e.g. best wireless earbuds",
                 key="main_seed_input_widget",
+                label_visibility="collapsed",
             )
-
-        # Immediate suggestion fetching & clear buttons
-        col_s_tip, col_s_fetch, col_s_clr = st.columns([3, 1.5, 1])
-        with col_s_tip:
-            st.caption("⚡ *Click **Get Live Suggestions** to inspect the real YouTube dropdown predictions instantly.*")
-        with col_s_fetch:
-            fetch_live_clicked = st.button("🔍 Get Live Suggestions", use_container_width=True, type="primary")
-        with col_s_clr:
+        with col_fetch:
+            fetch_live_clicked = st.button("🔍 Find Keywords", use_container_width=True, type="primary")
+        with col_clr:
             clear_seed_clicked = st.button("🧹 Clear", use_container_width=True)
+
+        st.markdown(
+            """
+            <div style="font-size: 0.83rem; color: #475569; margin: -0.25rem 0 1rem 0.25rem; display: flex; align-items: center; gap: 6px;">
+                <span style="color: #2563EB;">💡</span>
+                <span><b>What happens after clicking:</b> Keyword Studio queries YouTube's live search box to see authentic phrases people are typing in real-time.</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if clear_seed_clicked:
             st.session_state.instant_suggestions = []
@@ -1483,41 +1513,157 @@ def render_page_new_research(is_ready: bool) -> None:
             st.session_state.last_query = ""
             st.rerun()
 
-        col_loc1, col_loc2 = st.columns(2)
-        with col_loc1:
-            lang_options = list(config.supported_languages.keys())
-            default_lang_index = (
-                lang_options.index(default_lang_code)
-                if default_lang_code in lang_options
-                else 0
-            )
-            selected_lang = st.selectbox(
-                "Target Language",
-                options=lang_options,
-                index=default_lang_index,
-                format_func=lambda code: f"{config.supported_languages[code]} ({code})",
-                help="Select language for YouTube autocomplete requests.",
-            )
-        with col_loc2:
-            country_options = list(config.supported_countries.keys())
-            default_country_index = (
-                country_options.index(default_country_code)
-                if default_country_code in country_options
-                else 0
-            )
-            selected_country = st.selectbox(
-                "Target Country / Region",
-                options=country_options,
-                index=default_country_index,
-                format_func=lambda code: f"{config.supported_countries[code]} ({code})",
-                help="Select regional endpoint location filter.",
-            )
+        # Optional Advanced Settings in Collapsible Expander
+        with st.expander("⚙️ Advanced Search Settings (Language, Country & Expansion Methods)", expanded=False):
+            st.caption("Customize your search location, language endpoint, or enable multi-pattern expansions:")
+            col_loc1, col_loc2, col_proj = st.columns([1.5, 1.5, 1.5])
+            with col_loc1:
+                lang_options = list(config.supported_languages.keys())
+                default_lang_index = (
+                    lang_options.index(default_lang_code)
+                    if default_lang_code in lang_options
+                    else 0
+                )
+                selected_lang = st.selectbox(
+                    "Target Language",
+                    options=lang_options,
+                    index=default_lang_index,
+                    format_func=lambda code: f"{config.supported_languages[code]} ({code})",
+                    help="Select language for YouTube autocomplete requests (default: English).",
+                )
+            with col_loc2:
+                country_options = list(config.supported_countries.keys())
+                default_country_index = (
+                    country_options.index(default_country_code)
+                    if default_country_code in country_options
+                    else 0
+                )
+                selected_country = st.selectbox(
+                    "Target Country / Region",
+                    options=country_options,
+                    index=default_country_index,
+                    format_func=lambda code: f"{config.supported_countries[code]} ({code})",
+                    help="Select regional endpoint location filter (default: United States).",
+                )
+            with col_proj:
+                project_name_input = st.text_input(
+                    "Project Name (Optional)",
+                    value=rerun_p.get("project_name", ""),
+                    placeholder="e.g. Earbuds Q1 2026",
+                    help="Custom project name for tracking in Saved Research history.",
+                )
+
+            # Expansion Mode & Parameters
+            st.markdown("---")
+            st.markdown("##### ⚙️ Discovery Methods (Phase 9 Multi-Source Intelligence)")
+            st.caption("Select systematic keyword discovery methods beyond the seed keyword:")
+
+            c_exp1, c_exp2, c_exp3 = st.columns(3)
+            with c_exp1:
+                exp_direct = st.checkbox("A. Seed Autocomplete", value=True, help="Fetch direct seed suggestions")
+                exp_az = st.checkbox("B. Alphabet Expansion (A–Z)", value=False, help="Queries 'seed a' through 'seed z' (26 queries)")
+            with c_exp2:
+                exp_prefix_intent = st.checkbox("C. Prefix & Intent Expansion", value=False, help="Queries 'seed for', 'seed in', 'seed vs', 'seed review', 'seed comparison'")
+                exp_questions = st.checkbox("D. Question Expansion", value=False, help="Queries 'how to choose best ...', 'which ... is best', 'what is', 'why', 'when'")
+            with c_exp3:
+                exp_audience = st.checkbox("E. Audience & Use-Case", value=False, help="Queries 'seed for beginners', 'seed for black cars', 'seed for old cars', etc.")
+                exp_num = st.checkbox("Numeric Expansion (0–9)", value=False, help="Queries 'seed 0' through 'seed 9' (10 queries)")
+
+            col_rec1, col_rec2 = st.columns([2, 2])
+            with col_rec1:
+                recursive_mode = st.toggle(
+                    "Enable Multi-Level Recursive Tree Expansion (Depth > 1)",
+                    value=False,
+                    help="Recursively queries autocomplete suggestions of discovered keywords level-by-level.",
+                )
+            with col_rec2:
+                enable_patterns = st.checkbox(
+                    "Auto-generate Pattern Variations (Best, How-to, Reviews)",
+                    value=False,
+                    help="Generates offline pattern templates upon completion.",
+                )
+
+            col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+            with col_b1:
+                max_depth = st.slider(
+                    "Max Recursion Depth",
+                    min_value=0,
+                    max_value=config.max_allowed_depth,
+                    value=rerun_p.get("max_depth", config.default_max_depth if recursive_mode else 1),
+                    help="Depth 0 = seed only; Depth 1 = seed + immediate suggestions; Depth 2+ = recursive branches.",
+                )
+            with col_b2:
+                max_unique_keywords = st.slider(
+                    "Unique Result Target",
+                    min_value=10,
+                    max_value=config.max_allowed_unique_keywords,
+                    value=rerun_p.get("max_unique_keywords", config.default_max_unique_keywords),
+                    step=10,
+                    help="Maximum unique keywords to discover before halting.",
+                )
+            with col_b3:
+                request_budget = st.slider(
+                    "Request Budget",
+                    min_value=5,
+                    max_value=config.max_allowed_budget,
+                    value=rerun_p.get("request_budget", config.default_request_budget),
+                    step=5,
+                    help="Maximum allowable HTTP requests per session.",
+                )
+            with col_b4:
+                min_delay = st.slider(
+                    "Request Delay (s)",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=rerun_p.get("min_delay_seconds", config.crawl_min_delay_seconds),
+                    step=0.05,
+                    help="Polite minimum pause between requests.",
+                )
+
+            selected_pattern_categories = []
+            if enable_patterns:
+                cat_options = list(PatternCategory)
+                cat_display = {
+                    PatternCategory.LISTICLES: "Listicles (Top 5 / 10)",
+                    PatternCategory.BEST_BUYING: "Best & Buying Intent",
+                    PatternCategory.REVIEWS: "Reviews & Feedback",
+                    PatternCategory.HOW_TO: "How-To & Tutorials",
+                    PatternCategory.COMPARISON: "Comparison (VS)",
+                    PatternCategory.QUESTIONS: "Questions (What, How, Why)",
+                    PatternCategory.AUDIENCE: "Audience & Use-Case",
+                    PatternCategory.TIME_MODIFIERS: "Time Modifiers (Current Year)",
+                }
+                selected_pattern_categories = st.multiselect(
+                    "Enabled Pattern Categories",
+                    options=cat_options,
+                    default=[
+                        PatternCategory.LISTICLES,
+                        PatternCategory.BEST_BUYING,
+                        PatternCategory.HOW_TO,
+                        PatternCategory.QUESTIONS,
+                    ],
+                    format_func=lambda c: cat_display.get(c, c.value),
+                )
+
+            st.caption("ℹ️ *Note: Requested keyword counts and depths are maximum target caps, not guarantees.*")
+
+            # Deep Research Button inside Expander
+            col_btn1, col_btn2, _ = st.columns([2, 2, 3])
+            with col_btn1:
+                start_clicked = st.button("🚀 Run Deep Recursive Expansion", type="secondary", use_container_width=True)
+            with col_btn2:
+                cancel_clicked = st.button("🛑 Cancel Research", type="secondary", use_container_width=True)
+
+            if cancel_clicked:
+                if "cancel_event" in st.session_state and st.session_state.cancel_event:
+                    st.session_state.cancel_event.set()
+                    st.warning("⚠️ Cancellation requested. Stopping worker at next safe checkpoint...")
 
         # Handle Immediate Autocomplete Fetching
         if fetch_live_clicked:
             parsed_seeds = parse_seed_inputs(seed_input)
             if not parsed_seeds:
-                st.warning("⚠️ Please enter a seed keyword first.")
+                st.warning("⚠️ Please enter a keyword or topic first. For example: 'best wireless earbuds' or 'python for beginners'.")
             else:
                 target_q = parsed_seeds[0]
                 with st.spinner(f"Querying YouTube autocomplete for '{target_q}'..."):
@@ -1546,6 +1692,21 @@ def render_page_new_research(is_ready: bool) -> None:
             badge_color = "#7e22ce" if has_cached_item else "#0369a1"
 
             st.markdown("---")
+            # 5-Step Guided Progress Card
+            st.markdown(
+                """
+                <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 9px; padding: 10px 14px; margin-bottom: 12px;">
+                    <div style="font-size: 0.74rem; font-weight: 700; color: #1D4ED8; text-transform: uppercase; letter-spacing: 0.05em;">
+                        YOUR 5-STEP KEYWORD RESEARCH PATH
+                    </div>
+                    <div style="font-size: 0.85rem; color: #1E3A8A; margin-top: 3px;">
+                        <b>1. Discover Keywords (Done)</b> &rarr; <b>2. Review Predictions Below</b> &rarr; <b>3. Select a Promising Keyword</b> &rarr; <b>4. Check Competing Videos</b> &rarr; <b>5. Save or Export</b>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
             st.markdown(
                 f"<div style='display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;'>"
                 f"<h4 style='margin: 0;'>🎯 Real YouTube Autocomplete Dropdown: <code>\"{s_seed}\"</code></h4>"
@@ -1556,7 +1717,7 @@ def render_page_new_research(is_ready: bool) -> None:
             st.caption(f"Retrieved **{len(s_list)}** authentic suggestions from YouTube Suggest API (No synthetic data):")
 
             for s_idx, sug in enumerate(s_list):
-                r_col1, r_col2, r_col3, r_col4 = st.columns([5.5, 1.5, 1.5, 1.2])
+                r_col1, r_col2, r_col3, r_col4 = st.columns([5.2, 1.5, 1.8, 1.1])
                 s_cached = getattr(sug, "is_cached", False)
                 item_badge_text = "CACHED_AUTOCOMPLETE" if s_cached else "LIVE_AUTOCOMPLETE"
                 item_badge_color = "#7c3aed" if s_cached else "#059669"
@@ -1576,10 +1737,11 @@ def render_page_new_research(is_ready: bool) -> None:
                         st.session_state.last_query = sug.keyword
                         st.rerun()
                 with r_col3:
-                    if st.button("🚀 Research", key=f"res_sug_{s_idx}", help=f"Launch research for '{sug.keyword}'"):
+                    if st.button("🎥 Check Videos", key=f"res_sug_{s_idx}", help=f"Check competing videos for '{sug.keyword}'"):
                         st.session_state.active_seed_input = sug.keyword
                         st.session_state.last_query = sug.keyword
-                        st.session_state.quick_research_target = sug.keyword
+                        st.session_state.serp_search_query = sug.keyword
+                        st.session_state.current_page = PAGE_VIDEO_RESEARCH
                         st.rerun()
                 with r_col4:
                     if st.button("📋 Copy", key=f"cp_sug_{s_idx}", help="Copy this keyword"):
@@ -1591,7 +1753,7 @@ def render_page_new_research(is_ready: bool) -> None:
             st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
             p_act1, p_act2, p_act3, _ = st.columns([2, 2, 2.5, 2.5])
             with p_act1:
-                if st.button("📋 Copy All Visible Suggestions", key="cp_all_visible_btn", use_container_width=True):
+                if st.button("📋 Copy All Suggestions", key="cp_all_visible_btn", use_container_width=True):
                     st.session_state.copy_box_content = [s.keyword for s in s_list]
                     st.session_state.show_copy_box = True
                     st.rerun()
@@ -1611,113 +1773,9 @@ def render_page_new_research(is_ready: bool) -> None:
                     except Exception as exc:
                         st.error(f"Refresh failed: {exc}")
             with p_act3:
-                trigger_az_from_panel = st.button("⚡ Run Full A-Z Expansion", key="az_from_panel_btn", type="primary", use_container_width=True)
-
-        # Expansion Mode & Parameters
-        st.markdown("---")
-        st.markdown("##### ⚙️ Discovery Methods (Phase 9 Multi-Source Intelligence)")
-        st.caption("Select systematic keyword discovery methods beyond the seed keyword:")
-
-        c_exp1, c_exp2, c_exp3 = st.columns(3)
-        with c_exp1:
-            exp_direct = st.checkbox("A. Seed Autocomplete", value=True, help="Fetch direct seed suggestions")
-            exp_az = st.checkbox("B. Alphabet Expansion (A–Z)", value=False, help="Queries 'seed a' through 'seed z' (26 queries)")
-        with c_exp2:
-            exp_prefix_intent = st.checkbox("C. Prefix & Intent Expansion", value=False, help="Queries 'seed for', 'seed in', 'seed vs', 'seed review', 'seed comparison'")
-            exp_questions = st.checkbox("D. Question Expansion", value=False, help="Queries 'how to choose best ...', 'which ... is best', 'what is', 'why', 'when'")
-        with c_exp3:
-            exp_audience = st.checkbox("E. Audience & Use-Case", value=False, help="Queries 'seed for beginners', 'seed for black cars', 'seed for old cars', etc.")
-            exp_num = st.checkbox("Numeric Expansion (0–9)", value=False, help="Queries 'seed 0' through 'seed 9' (10 queries)")
-
-        col_rec1, col_rec2 = st.columns([2, 2])
-        with col_rec1:
-            recursive_mode = st.toggle(
-                "Enable Multi-Level Recursive Tree Expansion (Depth > 1)",
-                value=False,
-                help="Recursively queries autocomplete suggestions of discovered keywords level-by-level.",
-            )
-        with col_rec2:
-            enable_patterns = st.checkbox(
-                "Auto-generate Pattern Variations (Best, How-to, Reviews)",
-                value=False,
-                help="Generates offline pattern templates upon completion.",
-            )
-
-        col_b1, col_b2, col_b3, col_b4 = st.columns(4)
-        with col_b1:
-            max_depth = st.slider(
-                "Max Recursion Depth",
-                min_value=0,
-                max_value=config.max_allowed_depth,
-                value=rerun_p.get("max_depth", config.default_max_depth if recursive_mode else 1),
-                help="Depth 0 = seed only; Depth 1 = seed + immediate suggestions; Depth 2+ = recursive branches.",
-            )
-        with col_b2:
-            max_unique_keywords = st.slider(
-                "Unique Result Target",
-                min_value=10,
-                max_value=config.max_allowed_unique_keywords,
-                value=rerun_p.get("max_unique_keywords", config.default_max_unique_keywords),
-                step=10,
-                help="Maximum unique keywords to discover before halting.",
-            )
-        with col_b3:
-            request_budget = st.slider(
-                "Request Budget",
-                min_value=5,
-                max_value=config.max_allowed_budget,
-                value=rerun_p.get("request_budget", config.default_request_budget),
-                step=5,
-                help="Maximum allowable HTTP requests per session.",
-            )
-        with col_b4:
-            min_delay = st.slider(
-                "Request Delay (s)",
-                min_value=0.0,
-                max_value=1.0,
-                value=rerun_p.get("min_delay_seconds", config.crawl_min_delay_seconds),
-                step=0.05,
-                help="Polite minimum pause between requests.",
-            )
-
-        selected_pattern_categories = []
-        if enable_patterns:
-            cat_options = list(PatternCategory)
-            cat_display = {
-                PatternCategory.LISTICLES: "Listicles (Top 5 / 10)",
-                PatternCategory.BEST_BUYING: "Best & Buying Intent",
-                PatternCategory.REVIEWS: "Reviews & Feedback",
-                PatternCategory.HOW_TO: "How-To & Tutorials",
-                PatternCategory.COMPARISON: "Comparison (VS)",
-                PatternCategory.QUESTIONS: "Questions (What, How, Why)",
-                PatternCategory.AUDIENCE: "Audience & Use-Case",
-                PatternCategory.TIME_MODIFIERS: "Time Modifiers (Current Year)",
-            }
-            selected_pattern_categories = st.multiselect(
-                "Enabled Pattern Categories",
-                options=cat_options,
-                default=[
-                    PatternCategory.LISTICLES,
-                    PatternCategory.BEST_BUYING,
-                    PatternCategory.HOW_TO,
-                    PatternCategory.QUESTIONS,
-                ],
-                format_func=lambda c: cat_display.get(c, c.value),
-            )
-
-        st.caption("ℹ️ *Note: Requested keyword counts and depths are maximum target caps, not guarantees.*")
-
-        # Action Buttons
-        col_btn1, col_btn2, _ = st.columns([2, 2, 3])
-        with col_btn1:
-            start_clicked = st.button("🚀 Start Research", type="primary", use_container_width=True)
-        with col_btn2:
-            cancel_clicked = st.button("🛑 Cancel Research", type="secondary", use_container_width=True)
-
-        if cancel_clicked:
-            if "cancel_event" in st.session_state and st.session_state.cancel_event:
-                st.session_state.cancel_event.set()
-                st.warning("⚠️ Cancellation requested. Stopping worker at next safe checkpoint...")
+                if st.button("📊 View in Results Table", key="view_in_results_table_btn", type="primary", use_container_width=True):
+                    st.session_state.current_page = PAGE_RESULTS
+                    st.rerun()
 
     # Research Execution
     quick_target = st.session_state.pop("quick_research_target", None)
@@ -1971,12 +2029,13 @@ def render_page_results() -> None:
 
     render_page_header(
         title="Keyword Results",
-        subtitle="Interactive keyword results table, multi-dimensional filters, search intent distribution, and exports.",
+        subtitle="Review discovered keywords, filter by viewer intent, group similar topics, and export your research.",
         category="WORKSPACE",
         badge_text=f"{len(all_keywords)} Keywords" if all_keywords else "No Active Dataset",
         badge_type="primary" if all_keywords else "neutral",
         provenance="autocomplete" if all_keywords else "local_sqlite",
     )
+    render_beginner_page_guide("keyword_results")
 
     if not all_keywords:
         if render_empty_state(
@@ -2232,12 +2291,34 @@ def render_page_results() -> None:
             st.session_state.show_copy_box = False
             st.rerun()
 
-    # 6. Interactive Results Table
+    # Quick action for selected keyword
+    if selected_indices:
+        sel_kw = df_filtered.iloc[selected_indices[0]]["Keyword"]
+        col_sel_action, _ = st.columns([2.5, 3])
+        with col_sel_action:
+            if st.button(f"🎥 Check Competing Videos for '{sel_kw[:25]}'", key="btn_check_comp_sel", type="primary", use_container_width=True):
+                st.session_state.active_seed_input = sel_kw
+                st.session_state.last_query = sel_kw
+                st.session_state.serp_search_query = sel_kw
+                st.session_state.current_page = PAGE_VIDEO_RESEARCH
+                st.rerun()
+
+    # 6. Interactive Results Table with Plain-English Column Config
+    results_col_config = {
+        "Keyword": st.column_config.TextColumn("Keyword", help="Authentic query from YouTube search autocomplete"),
+        "Relevance Score": st.column_config.NumberColumn("Topic Potential", help="Research-based estimate (0–100) comparing semantic match to your starting topic. Does not guarantee views or rankings."),
+        "Cluster": st.column_config.TextColumn("Topic Group", help="Keywords grouped by common sub-topic"),
+        "Intent Classification": st.column_config.TextColumn("Viewer Search Intent", help="What the viewer wants to do: learn, compare, review, or solve a problem"),
+        "Source Type": st.column_config.TextColumn("Data Source", help="LIVE_AUTOCOMPLETE or CACHED_AUTOCOMPLETE"),
+        "Tail Length": st.column_config.TextColumn("Tail Length", help="Short, Medium, or Long tail"),
+    }
+
     st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
     st.dataframe(
         df_filtered,
         use_container_width=True,
         hide_index=True,
+        column_config=results_col_config,
         on_select="rerun",
         selection_mode="multi-row",
         key="results_table_selection",
@@ -2338,37 +2419,41 @@ def render_page_results() -> None:
                 key="export_center_excel_btn",
             )
 
-        # 7. Context-Aware Recommended Next Step
-        top_discovered_kw = all_keywords[0].keyword if all_keywords else query_label
-        p_click, s_click = render_recommended_next_step(
-            title=f"Inspect YouTube Competitor SERP for '{top_discovered_kw}'",
-            description=f"You have discovered {len(all_keywords)} keywords for '{query_label}'. Analyze real top-ranking videos, view counts, and competitor metadata to validate search demand.",
-            action_label=f"🎥 Inspect SERP for '{top_discovered_kw[:25]}'",
-            action_key="res_next_action_serp_btn",
-            why_recommended="Validates whether real videos ranking for your top keyword are outdated or from smaller creators, proving a genuine search gap.",
-            secondary_action_label="🧩 Expand Query Matrix in Pattern Generator",
-            secondary_action_key="res_next_action_pat_btn",
-        )
-        if p_click:
-            st.session_state.active_seed_input = top_discovered_kw
-            st.session_state.current_page = PAGE_VIDEO_RESEARCH
-            st.rerun()
-        if s_click:
-            st.session_state.active_seed_input = query_label
-            st.session_state.current_page = PAGE_PATTERNS
-            st.rerun()
+    # 7. Context-Aware Recommended Next Step (Phase 28 Simple English)
+    top_discovered_kw = all_keywords[0].keyword if all_keywords else query_label
+    p_click, s_click = render_recommended_next_step(
+        title=f"Check Competing Videos for '{top_discovered_kw}'",
+        description=f"You discovered {len(all_keywords)} keywords for '{query_label}'. Check real top-ranking videos, view counts, and publishing dates to see if you can create a better video.",
+        action_label=f"🎥 Check Videos for '{top_discovered_kw[:25]}'",
+        action_key="res_next_action_serp_btn",
+        why_recommended="Helps you see if existing videos are outdated or if other creators missed key questions.",
+        secondary_action_label="🧩 Find More Ideas with Patterns",
+        secondary_action_key="res_next_action_pat_btn",
+    )
+    if p_click:
+        st.session_state.active_seed_input = top_discovered_kw
+        st.session_state.last_query = top_discovered_kw
+        st.session_state.serp_search_query = top_discovered_kw
+        st.session_state.current_page = PAGE_VIDEO_RESEARCH
+        st.rerun()
+    if s_click:
+        st.session_state.active_seed_input = query_label
+        st.session_state.last_query = query_label
+        st.session_state.current_page = PAGE_PATTERNS
+        st.rerun()
 
 
 def render_page_patterns() -> None:
     """Render the Smart Keyword Pattern Generator page."""
     render_page_header(
         title="Pattern Generator",
-        subtitle="Generate high-intent search query variations across 8 configurable categories in English and Bangla. Operates 100% offline with zero external network calls or API keys.",
+        subtitle="Generate high-intent video ideas and search queries across 8 proven creator frameworks. Works 100% offline.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="100% Offline Engine",
         badge_type="neutral",
         provenance="deterministic",
     )
+    render_beginner_page_guide("pattern_generator")
     render_contextual_help("pattern_generator")
 
     col_p1, col_p2 = st.columns(2)
@@ -2557,12 +2642,13 @@ def render_page_saved(is_ready: bool) -> None:
     """Render the Saved Research Projects and History page."""
     render_page_header(
         title="Saved Research",
-        subtitle="Inspect, search, rename, export, or manage locally persisted research projects from SQLite (data/keywords.db).",
+        subtitle="Access, search, rename, and export all your saved research projects from local storage.",
         category="WORKFLOW & MANAGEMENT",
         badge_text="Local Storage",
         badge_type="success" if is_ready else "warning",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("saved_research")
     render_contextual_help("saved_research")
 
     if not is_ready:
@@ -2807,12 +2893,13 @@ def render_page_video_research(is_ready: bool) -> None:
     """Render the YouTube Video Research, Competitor Analysis & Keyword Validation page (Phase 10)."""
     render_page_header(
         title="YouTube Video Research",
-        subtitle="Inspect real top-ranking videos, actual view counts, channel distributions, title structures, and evidence-based keyword validation directly from YouTube Data API v3.",
+        subtitle="Review top-ranking videos, view counts, and publishing dates to find content gaps you can fill.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="SERP Explorer",
         badge_type="primary",
         provenance="youtube_api",
     )
+    render_beginner_page_guide("video_research")
     render_contextual_help("video_serp")
     render_interactive_tour("video_serp")
 
@@ -3510,12 +3597,13 @@ def render_page_content_opportunities(is_ready: bool) -> None:
     """Render the YouTube Content Opportunities, Gap Analysis & Video Planning page (Phase 11)."""
     render_page_header(
         title="Content Opportunities",
-        subtitle="Bridge keyword discovery and video research to identify empirical content gaps, generate structured topic ideas, craft high-retention titles, and manage your production calendar.",
+        subtitle="Spot content gaps in your niche, brainstorm high-converting video titles, and plan your upload calendar.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Gap Intelligence",
         badge_type="primary",
         provenance="youtube_api",
     )
+    render_beginner_page_guide("content_opportunities")
     render_contextual_help("content_opportunities")
     render_interactive_tour("content_opportunities")
 
@@ -4239,12 +4327,13 @@ def render_page_product_opportunities(is_ready: bool) -> None:
     """Render the AI-Powered Niche Research & Product Opportunity Intelligence page (Phase 13)."""
     render_page_header(
         title="Niche Product Opportunity Finder",
-        subtitle="Intelligent research assistant: discover real products in your niche, generate AI-assisted search queries, analyze recent YouTube video coverage, uncover evidence-backed content gaps, and review transparent opportunity scores.",
+        subtitle="Research products in your niche that viewers want to buy, and find review opportunities with few recent competitor videos.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Product Discovery",
         badge_type="primary",
         provenance="youtube_api",
     )
+    render_beginner_page_guide("product_opportunities")
     render_contextual_help("product_opportunities")
     render_interactive_tour("product_opportunities")
 
@@ -5075,12 +5164,13 @@ def render_page_product_planner(is_ready: bool) -> None:
     """Render Phase 14 Product Opportunity Planner & Affiliate Content Planning workspace."""
     render_page_header(
         title="Product Opportunity Planner",
-        subtitle="Prioritize verified product opportunities, evaluate transparent multi-factor scoring (v14.0), conduct non-fabricated affiliate research, and prepare evidence-grounded video content briefs.",
+        subtitle="Plan product review videos, evaluate topic potential scores, and prepare FTC-compliant video briefs.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Affiliate Planner",
         badge_type="primary",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("product_planner")
     render_contextual_help("product_planner")
     render_interactive_tour("product_planner")
 
@@ -5691,12 +5781,13 @@ def render_page_research_monitor(is_ready: bool) -> None:
     """Render the Automated Niche Research Reports & Opportunity Monitoring page (Phase 15)."""
     render_page_header(
         title="Research Monitor",
-        subtitle="Save reusable research configurations, execute repeatable on-demand or scheduled monitoring runs, compare snapshots over time, and inspect empirical delta changes without synthetic extrapolation.",
+        subtitle="Save key search queries to track how competitor videos and keyword rankings change over time.",
         category="WORKFLOW & MANAGEMENT",
         badge_text="Temporal Tracker",
         badge_type="primary",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("research_monitor")
     render_contextual_help("research_monitor")
     render_interactive_tour("research_monitor")
 
@@ -6599,12 +6690,13 @@ def render_page_user_guide(is_ready: bool) -> None:
     """Render the comprehensive Apple-inspired User Guide and Interactive Workflow Playbooks."""
     render_page_header(
         title="User Guide",
-        subtitle="Complete, step-by-step documentation for every major feature, workflow, and setting in Keyword Studio. Built strictly from actual application state with zero generic assumptions.",
+        subtitle="Step-by-step documentation, best practices, and playbooks for every feature in Keyword Studio.",
         category="WORKFLOW & MANAGEMENT",
         badge_text="Docs & Playbooks",
         badge_type="neutral",
         provenance="deterministic",
     )
+    render_beginner_page_guide("user_guide")
 
     # 1. Interactive Guided Tour Mode
     with st.expander("🧭 Guided Workflow Tour (Quick Start Playbook)", expanded=False):
@@ -6866,12 +6958,13 @@ def render_page_auth(is_ready: bool) -> None:
     """Render the Studio Profile, Local Authentication & Security Vault page (Phase 16)."""
     render_page_header(
         title="Studio Profile & Auth",
-        subtitle="Manage local creator identity, workspace environment, API security vault, and cryptographic storage isolation. All credentials and research configurations remain strictly on your local machine.",
+        subtitle="Manage your local creator profile and securely store optional YouTube API credentials.",
         category="STUDIO & CONFIGURATION",
         badge_text="Local Vault Active",
         badge_type="success",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("studio_auth")
     render_contextual_help("studio_auth")
 
     tab_profile, tab_vault = st.tabs(["👤 Studio Profile & Identity", "🛡️ Local Vault & Privacy Diagnostics"])
@@ -7064,12 +7157,13 @@ def render_page_settings(is_ready: bool) -> None:
     """Render the Settings, Cache Management, and Database Backups page."""
     render_page_header(
         title="Settings & Data Sources",
-        subtitle="Inspect runtime configurations, maintain local cache, create verified backups, and perform safe restores.",
+        subtitle="Manage local storage, clear search cache, and create verified database backups.",
         category="STUDIO & CONFIGURATION",
         badge_text="System Configuration",
         badge_type="neutral",
         provenance="local_sqlite",
     )
+    render_beginner_page_guide("settings")
     render_contextual_help("settings_backup")
 
     # 1. System Information
@@ -7304,11 +7398,12 @@ def render_page_channels(is_ready: bool) -> None:
     """Render the Four-Channel Workspace and Profile Portfolio Manager."""
     render_page_header(
         title="Channel Portfolio",
-        subtitle="Configure and manage four independent YouTube channel profiles with dedicated niches, audiences, languages, exclusions, and SEO rules.",
+        subtitle="Configure and manage profiles for each of your four YouTube channels to keep research separate.",
         category="WORKSPACE",
         badge_text="Four-Channel Workspace",
         provenance="SQLite WAL",
     )
+    render_beginner_page_guide("channel_portfolio")
 
     if not is_ready:
         render_empty_state("Database is not ready. Please check database permissions.", "warning")
@@ -7464,11 +7559,12 @@ def render_page_description_studio(is_ready: bool) -> None:
     """Render the 8-Part YouTube SEO Description Builder and Compliance Studio."""
     render_page_header(
         title="Description Studio",
-        subtitle="Build high-converting, 8-part YouTube video descriptions with strict character tracking (≤5,000 chars) and FTC affiliate disclosure compliance.",
+        subtitle="Write search-optimized YouTube descriptions with real-time character counters and affiliate disclosures.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="8-Part Framework",
         provenance="Description Studio",
     )
+    render_beginner_page_guide("description_studio")
 
     if not is_ready:
         render_empty_state("Database is not ready.", "warning")
@@ -7608,11 +7704,12 @@ def render_page_seo_audit(is_ready: bool) -> None:
     """Render the comprehensive YouTube SEO Audit and Affiliate Content Quality Engine."""
     render_page_header(
         title="SEO & Content Audit",
-        subtitle="Audit video titles, descriptions, script promise delivery, affiliate compliance, and thumbnail synergy across your 4 channels.",
+        subtitle="Audit your video titles, descriptions, and affiliate compliance across 25 quality checkpoints before uploading.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Quality Engine",
         provenance="Local Audit Engine",
     )
+    render_beginner_page_guide("seo_audit")
 
     if not is_ready:
         render_empty_state("Database is not ready.", "warning")
@@ -7956,11 +8053,12 @@ def render_page_analytics(is_ready: bool) -> None:
     """Render the official YouTube Analytics dashboard and growth intelligence engine."""
     render_page_header(
         title="Analytics & Growth Intelligence",
-        subtitle="Evidence-based performance analytics, topic learning, and growth coaching across your four channels.",
+        subtitle="Track your actual YouTube views, watch time, and subscriber growth across your four channels.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="OAuth 2.0 Engine",
         provenance="YouTube Analytics API",
     )
+    render_beginner_page_guide("analytics")
 
     if not is_ready:
         render_empty_state("Database is not ready.", "warning")
@@ -8424,11 +8522,12 @@ def render_page_morning_report(is_ready: bool) -> None:
     """Render the Four-Channel Daily Morning Idea Report Dashboard with 18-Field Evidence Cards."""
     render_page_header(
         title="Morning Idea Report",
-        subtitle="Automated daily YouTube SEO & affiliate opportunity engine for all four channels, backed by 60-day empirical gap analysis.",
+        subtitle="Daily validated video ideas for each of your four channels, backed by 60-day competitor gap analysis.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Daily 07:00 AM",
         provenance="Four-Channel Engine",
     )
+    render_beginner_page_guide("morning_report")
 
     if not is_ready:
         render_empty_state("Database is not ready.", "warning")
@@ -8687,11 +8786,12 @@ def render_page_strategy(is_ready: bool) -> None:
     """Render Phase 25: YouTube Content Strategy Autopilot for Four Channels."""
     render_page_header(
         title="Content Strategy Autopilot",
-        subtitle="Unified strategy planning, topic clusters, capacity-aware scheduling, and production workflow for four independent channels.",
+        subtitle="Organize content pillars, plan weekly upload schedules, and track video production stages.",
         category="DISCOVERY & INTELLIGENCE",
         badge_text="Autopilot v25",
         provenance="Multi-Source Evidence",
     )
+    render_beginner_page_guide("strategy_autopilot")
 
     if not is_ready:
         render_empty_state("Database is not ready.", "warning")
@@ -9317,6 +9417,458 @@ def render_page_strategy(is_ready: bool) -> None:
             st.success("✓ Your production pipeline is well-balanced and aligned with strategic priorities.")
 
 
+# ==============================================================================
+# Phase 26: YouTube Growth Intelligence & Topic Validation Engine
+# ==============================================================================
+
+def render_page_validation(is_ready: bool) -> None:
+    """Render Phase 26: YouTube Growth Intelligence & Topic Validation Engine."""
+    render_page_header(
+        title="Topic Validation & Growth Intelligence",
+        subtitle="Validate candidate video ideas before recording to prevent self-cannibalization and ensure audience demand.",
+        category="DISCOVERY & INTELLIGENCE",
+        badge_text="Validation v26",
+        provenance="Multi-Source Public SERP & Catalog",
+    )
+    render_beginner_page_guide("topic_validation")
+
+    if not is_ready:
+        render_empty_state("Database is not ready.", "warning")
+        return
+
+    active_chan_id = render_channel_switcher()
+    channel = channel_manager.get_channel(active_chan_id)
+    if not channel:
+        st.error(f"Channel {active_chan_id} not found.")
+        return
+
+    niche = getattr(channel, "channel_niche", getattr(channel, "niche", "General"))
+    is_aff = bool(getattr(channel, "affiliate_enabled", getattr(channel, "affiliate_marketing_enabled", False)))
+
+    # Channel Posture Banner
+    st.markdown(
+        f"""
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <span style="font-weight: 700; color: #1E293B;">🎯 Validation Channel:</span> <b>{channel.channel_name}</b>
+                <span style="color: #64748B; margin-left: 0.5rem; font-size: 0.85rem;">
+                    Niche: <b>{niche}</b> &middot; Audience: {channel.target_audience or 'Enthusiasts'} &middot; Monetization: <b>{'Affiliate Enabled' if is_aff else 'Organic Only'}</b>
+                </span>
+            </div>
+            <div>
+                <span style="font-size: 0.75rem; background: #DCFCE7; color: #166534; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 600;">
+                    ✓ Rolling 60-Day Gap Active
+                </span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    tab_val_studio, tab_val_matrix, tab_own_gap, tab_comp_obs, tab_aff_lab, tab_angles = st.tabs([
+        "🔍 Validation Studio",
+        "📊 Channel Recommendations",
+        "🛡️ Own-Channel Gap & Cannibalization",
+        "🎥 Competitor Observatory",
+        "🏷️ Affiliate Product Lab",
+        "📐 Multi-Angle Workshop",
+    ])
+
+    # --------------------------------------------------------------------------
+    # TAB 1: Pre-Recommendation Validation Studio
+    # --------------------------------------------------------------------------
+    with tab_val_studio:
+        st.markdown("### 🔍 Pre-Recommendation Topic Validation Studio")
+        st.caption(f"Validate any topic before filming for **{channel.channel_name}**. Strictly evidence-backed with zero fabricated metrics.")
+
+        with st.form(key=f"form_validate_topic_{active_chan_id}"):
+            col_v1, col_v2 = st.columns(2)
+            with col_v1:
+                v_topic = st.text_input("Candidate Topic", placeholder="e.g. Best Budget Microphone for Creators Under $100", key="val_in_topic")
+                v_kw = st.text_input("Primary Target Keyword", placeholder="e.g. best budget microphone 2026", key="val_in_kw")
+                v_sec = st.text_input("Secondary Keywords (comma-separated)", placeholder="e.g. budget mic test, podcast mic for beginners", key="val_in_sec")
+            with col_v2:
+                v_intent = st.selectbox(
+                    "Search Intent",
+                    options=["Informational / How-To", "Commercial Investigation / Best", "Comparative / VS", "Review / Evaluation", "Troubleshooting / Fix", "Curiosity / Contrarian"],
+                    index=0,
+                    key="val_in_intent",
+                )
+                v_viewer = st.text_input("Target Viewer Persona", value=channel.target_audience or "Beginners and enthusiasts", key="val_in_viewer")
+                v_prod = st.text_input("Associated Product Name (Optional, for Affiliate Audit)", placeholder="e.g. Audio-Technica AT2020", key="val_in_prod")
+
+            btn_run_val = st.form_submit_button("⚡ Run Multi-Factor Topic Validation")
+
+        if btn_run_val and v_topic and v_kw:
+            sec_list = [s.strip() for s in v_sec.split(",") if s.strip()]
+            report = topic_validation_engine.validate_candidate_topic(
+                channel=channel,
+                topic=v_topic,
+                keyword=v_kw,
+                secondary_keywords=sec_list,
+                product_name=v_prod.strip() if v_prod else None,
+                search_intent=v_intent,
+                target_viewer=v_viewer.strip(),
+            )
+            saved_id = db_manager.save_topic_validation_report(report)
+            report.id = saved_id
+            st.session_state[f"active_val_report_{active_chan_id}"] = report
+            st.success(f"Topic Validation Complete (Report #{saved_id})!")
+
+        active_report = st.session_state.get(f"active_val_report_{active_chan_id}")
+        if active_report:
+            st.markdown("---")
+            # Score Header Card
+            readiness_color = "#166534" if active_report.readiness_status == TopicReadinessStatus.READY_FOR_REVIEW.value else ("#92400E" if active_report.readiness_status == TopicReadinessStatus.NEEDS_MORE_RESEARCH.value else "#991B1B")
+            readiness_bg = "#DCFCE7" if active_report.readiness_status == TopicReadinessStatus.READY_FOR_REVIEW.value else ("#FEF3C7" if active_report.readiness_status == TopicReadinessStatus.NEEDS_MORE_RESEARCH.value else "#FEE2E2")
+
+            st.markdown(
+                f"""
+                <div style="background: white; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <h3 style="margin: 0; color: #0F172A;">{active_report.topic}</h3>
+                            <div style="margin-top: 0.35rem; font-size: 0.88rem; color: #475569;">
+                                Primary Keyword: <code style="background: #F1F5F9; padding: 0.15rem 0.4rem; border-radius: 4px;">{active_report.primary_keyword}</code> &middot;
+                                Intent: <b>{active_report.search_intent}</b> &middot; Target Viewer: <i>{active_report.target_viewer}</i>
+                            </div>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 1.6rem; font-weight: 800; color: #2563EB;">{active_report.composite_opportunity_score:.1f}</div>
+                            <span style="font-size: 0.75rem; background: {readiness_bg}; color: {readiness_color}; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700;">
+                                {active_report.readiness_status}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Sub-Factor Score Breakdown
+            sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
+            sc1.metric("Niche Match", f"{active_report.niche_match_score:.0f}/100")
+            sc2.metric("Intent Clarity", f"{active_report.intent_clarity_score:.0f}/100")
+            sc3.metric("Keyword Evid.", f"{active_report.keyword_evidence_score:.0f}/100")
+            sc4.metric("Recent Videos", f"{active_report.recent_video_evidence_score:.0f}/100", f"{active_report.recent_videos_count} in 60d")
+            sc5.metric("Own Uniqueness", f"{active_report.own_channel_overlap_score:.0f}/100")
+            sc6.metric("Monetization", f"{active_report.product_relevance_score:.0f}/100")
+
+            # 5-Point Validation Audit Report
+            st.markdown("#### 📋 5-Point Validation Audit Report")
+            c_rep1, c_rep2 = st.columns(2)
+            with c_rep1:
+                st.markdown("**1. What Supports the Idea:**")
+                for sup in active_report.what_supports_idea:
+                    st.markdown(f"• {sup}")
+
+                st.markdown("<div style='height: 0.4rem;'></div>", unsafe_allow_html=True)
+                st.markdown("**2. What Weakens the Idea (Risks & Saturation):**")
+                if active_report.what_weakens_idea:
+                    for wk in active_report.what_weakens_idea:
+                        st.warning(f"• {wk}")
+                else:
+                    st.info("No significant negative signals detected.")
+
+            with c_rep2:
+                st.markdown("**3. What Remains Unknown (Epistemic Disclosures):**")
+                for unk in active_report.what_remains_unknown:
+                    st.markdown(f"• <i>{unk}</i>", unsafe_allow_html=True)
+
+                st.markdown("<div style='height: 0.4rem;'></div>", unsafe_allow_html=True)
+                st.markdown("**4. What Further Research is Needed:**")
+                for res in active_report.further_research_needed:
+                    st.markdown(f"• **{res}**")
+
+            st.markdown(
+                f"""
+                <div style="background: #F8FAFC; border-left: 4px solid #2563EB; padding: 0.75rem 1rem; border-radius: 4px; margin-top: 0.8rem; font-size: 0.9rem;">
+                    <b>5. Human Review Verdict:</b> <span style="font-weight: 700; color: {readiness_color};">{active_report.readiness_status}</span> &middot;
+                    Confidence Tier: <b>{active_report.confidence_tier}</b> &middot; Gap State: <code>{active_report.gap_state}</code>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Action Controls
+            st.markdown("<div style='height: 0.6rem;'></div>", unsafe_allow_html=True)
+            act_col1, act_col2, act_col3, act_col4 = st.columns(4)
+            with act_col1:
+                if st.button("✓ Approve Topic", key=f"btn_val_appr_{active_report.id}", use_container_width=True):
+                    db_manager.update_topic_validation_report(active_report.id, {"is_approved": True, "readiness_status": TopicReadinessStatus.READY_FOR_REVIEW.value})
+                    st.success("Approved!")
+                    st.rerun()
+            with act_col2:
+                if st.button("📅 Add to Calendar", key=f"btn_val_cal_{active_report.id}", use_container_width=True):
+                    cal_item = StrategyCalendarItem(
+                        id=None,
+                        channel_id=channel.id,
+                        channel_name=channel.channel_name,
+                        topic=active_report.topic,
+                        target_keyword=active_report.primary_keyword,
+                        search_intent=active_report.search_intent,
+                        suggested_format="Long-form",
+                        working_title=active_report.topic,
+                        production_status="Planned",
+                        planned_date=(datetime.now().date() + timedelta(days=5)).strftime("%Y-%m-%d"),
+                        evidence_summary=f"Validation Score: {active_report.composite_opportunity_score:.1f}/100",
+                        required_research="; ".join(active_report.further_research_needed[:2]),
+                        affiliate_disclosure_required=is_aff,
+                        production_hours_estimate=4.5,
+                    )
+                    db_manager.save_strategy_calendar_item(cal_item)
+                    db_manager.update_topic_validation_report(active_report.id, {"is_added_to_calendar": True})
+                    st.success("Added to Channel Calendar!")
+                    st.rerun()
+            with act_col3:
+                if st.button("💾 Save for Later", key=f"btn_val_save_{active_report.id}", use_container_width=True):
+                    db_manager.update_topic_validation_report(active_report.id, {"is_saved": True})
+                    st.success("Saved to shortlist!")
+                    st.rerun()
+            with act_col4:
+                if st.button("✕ Reject Idea", key=f"btn_val_rej_{active_report.id}", use_container_width=True):
+                    db_manager.update_topic_validation_report(active_report.id, {"is_rejected": True, "readiness_status": TopicReadinessStatus.NOT_RECOMMENDED.value})
+                    st.warning("Rejected.")
+                    st.rerun()
+
+    # --------------------------------------------------------------------------
+    # TAB 2: Four-Channel Recommendation Matrix
+    # --------------------------------------------------------------------------
+    with tab_val_matrix:
+        st.markdown("### 📊 Four-Channel Recommendation Matrix")
+        st.caption(f"Filter validated candidate ideas for **{channel.channel_name}** with zero cross-channel data bleed.")
+
+        col_fl1, col_fl2 = st.columns([2, 1])
+        with col_fl1:
+            view_mode = st.selectbox(
+                "Filter View",
+                options=[
+                    "All Validated Ideas",
+                    "⭐ Highest-Priority Ideas (Score ≥ 70)",
+                    "✨ Newly Discovered Ideas",
+                    "🔬 Ideas Requiring More Research",
+                    "🏷️ Affiliate-Related Opportunities",
+                    "⚠️ Existing-Topic Overlap Warnings",
+                    "💾 Saved for Production",
+                ],
+                index=0,
+                key=f"val_view_filter_{active_chan_id}",
+            )
+        with col_fl2:
+            st.write("")
+            st.write("")
+            if st.button("⚡ Seed Validation Ideas", key="btn_seed_val_reports", use_container_width=True):
+                seed_topics = [
+                    (f"How to Master {niche} in 2026: Complete Guide", f"{niche.lower()} guide 2026", None),
+                    (f"Top 5 {niche} Mistakes That Waste Hours", f"{niche.lower()} mistakes", None),
+                    (f"Best Budget Gear for {niche} Tested", f"best budget {niche.lower()} gear", "Budget Pro Gear Kit"),
+                    (f"{niche}: Tool A vs Tool B Shootout", f"{niche.lower()} comparison", "Tool A vs Tool B"),
+                ]
+                for st_topic, st_kw, st_prod in seed_topics:
+                    rpt = topic_validation_engine.validate_candidate_topic(channel, st_topic, st_kw, product_name=st_prod)
+                    db_manager.save_topic_validation_report(rpt)
+                st.success("Seeded candidate validation reports!")
+                st.rerun()
+
+        # Load reports from SQLite
+        all_reports = db_manager.get_topic_validation_reports(active_chan_id)
+
+        # Apply filtering
+        filtered_reports = all_reports
+        if view_mode == "⭐ Highest-Priority Ideas (Score ≥ 70)":
+            filtered_reports = [r for r in all_reports if r.composite_opportunity_score >= 70.0]
+        elif view_mode == "🔬 Ideas Requiring More Research":
+            filtered_reports = [r for r in all_reports if r.readiness_status == TopicReadinessStatus.NEEDS_MORE_RESEARCH.value]
+        elif view_mode == "🏷️ Affiliate-Related Opportunities":
+            filtered_reports = [r for r in all_reports if r.product_validation is not None or r.product_relevance_score >= 60.0]
+        elif view_mode == "⚠️ Existing-Topic Overlap Warnings":
+            filtered_reports = [r for r in all_reports if r.own_channel_overlap_score < 70.0]
+        elif view_mode == "💾 Saved for Production":
+            filtered_reports = [r for r in all_reports if r.is_saved]
+
+        if not filtered_reports:
+            st.info("No validation reports found for this filter. Use '⚡ Seed Validation Ideas' or validate a topic in Tab 1.")
+        else:
+            st.write(f"Showing **{len(filtered_reports)}** validated topics for **{channel.channel_name}**.")
+            for rpt in filtered_reports:
+                with st.expander(f"{'✅' if rpt.is_approved else ('⭐' if rpt.is_saved else '📌')} {rpt.topic} (Score: {rpt.composite_opportunity_score:.1f} &middot; {rpt.readiness_status})", expanded=False):
+                    col_det1, col_det2 = st.columns([3, 1])
+                    with col_det1:
+                        st.markdown(f"**Primary Keyword:** `{rpt.primary_keyword}` &middot; **Intent:** {rpt.search_intent}")
+                        st.markdown(f"**Gap State:** `{rpt.gap_state}` ({rpt.recent_videos_count} matching videos in 60d)")
+                        st.markdown(f"**Supports:** {'; '.join(rpt.what_supports_idea[:2])}")
+                        if rpt.what_weakens_idea:
+                            st.markdown(f"**Weakens:** {'; '.join(rpt.what_weakens_idea[:2])}")
+                        st.caption(f"Confidence: {rpt.confidence_tier} &middot; Overlap Score: {rpt.own_channel_overlap_score:.0f}/100 &middot; Monetization: {rpt.product_relevance_score:.0f}/100")
+                    with col_det2:
+                        if not rpt.is_approved:
+                            if st.button("✓ Approve", key=f"matrix_appr_{rpt.id}", use_container_width=True):
+                                db_manager.update_topic_validation_report(rpt.id, {"is_approved": True})
+                                st.rerun()
+                        else:
+                            st.success("Approved")
+                        if not rpt.is_saved:
+                            if st.button("⭐ Save", key=f"matrix_save_{rpt.id}", use_container_width=True):
+                                db_manager.update_topic_validation_report(rpt.id, {"is_saved": True})
+                                st.rerun()
+                        if st.button("🗑️ Delete", key=f"matrix_del_{rpt.id}", use_container_width=True):
+                            db_manager.delete_topic_validation_report(rpt.id)
+                            st.rerun()
+
+    # --------------------------------------------------------------------------
+    # TAB 3: Own-Channel Content Gap & Cannibalization Detector
+    # --------------------------------------------------------------------------
+    with tab_own_gap:
+        st.markdown("### 🛡️ Own-Channel Content Gap & Cannibalization Detector")
+        st.caption(f"Prevent internal competition and keyword self-cannibalization on **{channel.channel_name}**.")
+
+        chk_topic = st.text_input("Enter Topic to Audit for Overlap", placeholder="e.g. Complete Mechanical Keyboard Setup Guide", key=f"chk_overlap_in_{active_chan_id}")
+        if chk_topic:
+            res = topic_validation_engine.detect_own_channel_overlap(channel, chk_topic)
+
+            st.markdown(
+                f"""
+                <div style="background: white; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1rem; margin-top: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0;">Overlap Audit: {res.topic}</h4>
+                        <span style="font-size: 1.1rem; font-weight: 800; color: {'#166534' if res.overlap_score >= 70 else ('#92400E' if res.overlap_score >= 40 else '#991B1B')};">
+                            {res.overlap_score:.0f}% Unique
+                        </span>
+                    </div>
+                    <p style="margin: 0.5rem 0 0 0; color: #475569; font-size: 0.9rem;">{res.intent_overlap_warning}</p>
+                    <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+                        <b>Recommended Action:</b> <code>{res.suggested_action}</code>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if res.overlapping_titles:
+                st.markdown("#### Conflicting Channel Content Detected:")
+                for ot, orsn in zip(res.overlapping_titles, res.overlapping_reasons):
+                    st.warning(f"• **'{ot}'** — {orsn}")
+
+        st.markdown("---")
+        st.markdown(f"#### Existing Channel Published Topics ({len(channel.existing_video_topics or [])})")
+        for idx, ext in enumerate(channel.existing_video_topics or []):
+            st.caption(f"{idx + 1}. {ext}")
+
+    # --------------------------------------------------------------------------
+    # TAB 4: Competitor Video Observatory
+    # --------------------------------------------------------------------------
+    with tab_comp_obs:
+        st.markdown("### 🎥 Competitor Video & Velocity Observatory")
+        st.caption("Public metadata observation and views-per-day velocity. Zero inference of private retention or revenue.")
+
+        comp_q = st.text_input("Search Competitor Video Metadata", value=f"{niche} tutorial", key=f"comp_q_in_{active_chan_id}")
+        if comp_q:
+            records = topic_validation_engine.analyze_competitor_videos(comp_q, limit=6)
+            st.write(f"Analyzed **{len(records)}** public video records for '{comp_q}'.")
+
+            for rec in records:
+                with st.container():
+                    st.markdown(
+                        f"""
+                        <div style="background: white; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.9rem; margin-bottom: 0.6rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                                <div>
+                                    <h5 style="margin: 0; color: #0F172A;">{rec.title}</h5>
+                                    <div style="font-size: 0.8rem; color: #64748B; margin-top: 0.2rem;">
+                                        Channel: <b>{rec.channel_title}</b> &middot; Published: <b>{rec.published_at}</b> ({rec.relative_age_days}d ago) &middot; Duration: {rec.duration}
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 1.1rem; font-weight: 700; color: #2563EB;">{rec.view_count:,} views</div>
+                                    <div style="font-size: 0.72rem; color: #64748B;">{rec.views_per_day} views/day</div>
+                                </div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+    # --------------------------------------------------------------------------
+    # TAB 5: Affiliate Product Verification Lab
+    # --------------------------------------------------------------------------
+    with tab_aff_lab:
+        st.markdown("### 🏷️ Affiliate Product Verification Lab")
+        st.caption(f"Official specifications, trustworthy price verification, and FTC disclosure reminders for **{channel.channel_name}**.")
+
+        if not is_aff:
+            st.info("Affiliate marketing is currently disabled for this channel profile. Enable affiliate marketing in Channel Portfolio to activate commercial product research.")
+        else:
+            in_pname = st.text_input("Verify Product Identity & Availability", placeholder="e.g. Keychron Q1 Pro Mechanical Keyboard", key=f"in_prod_lab_{active_chan_id}")
+            if in_pname:
+                pv = topic_validation_engine.validate_affiliate_product(channel, in_pname)
+
+                st.markdown(
+                    f"""
+                    <div style="background: white; border: 1px solid #E2E8F0; border-radius: 8px; padding: 1.2rem; margin-top: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h4 style="margin: 0;">{pv.product_name}</h4>
+                            <span style="font-size: 0.8rem; background: #DCFCE7; color: #166534; padding: 0.2rem 0.6rem; border-radius: 4px; font-weight: 700;">
+                                {pv.availability_status}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #475569; margin-top: 0.4rem;">
+                            Category: <b>{pv.category}</b> &middot; Brand: <b>{pv.brand}</b> &middot; Program: <b>{pv.affiliate_program}</b>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("<div style='height: 0.5rem;'></div>", unsafe_allow_html=True)
+                p_c1, p_c2 = st.columns(2)
+                with p_c1:
+                    st.markdown("#### 🔍 Verified Specifications")
+                    for k, v in pv.verified_specs.items():
+                        st.write(f"**{k}:** {v}")
+                    st.write(f"**Price Source:** {pv.price_source}")
+
+                with p_c2:
+                    st.markdown("#### ⚠️ Facts Requiring Manual Creator Testing")
+                    for unv in pv.unverified_facts:
+                        st.warning(f"• {unv}")
+
+                st.markdown(
+                    """
+                    <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 6px; padding: 0.7rem; font-size: 0.85rem; color: #92400E; margin-top: 0.8rem;">
+                        <b>⚖️ FTC Disclosure Reminder:</b> You must place a clear, conspicuous disclosure above the fold in the description before any affiliate links. Never make claims about products not tested hands-on.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    # --------------------------------------------------------------------------
+    # TAB 6: Multi-Angle Topic Workshop
+    # --------------------------------------------------------------------------
+    with tab_angles:
+        st.markdown("### 📐 Multi-Angle Topic Workshop")
+        st.caption("Generate distinct, non-repetitive angles for any approved topic. Avoid identical video rehashes.")
+
+        w_topic = st.text_input("Enter Topic to Workshop Angles", value=f"{niche} for Absolute Beginners", key=f"angle_in_top_{active_chan_id}")
+        w_kw = st.text_input("Core Keyword", value=f"{niche.lower()} for beginners", key=f"angle_in_kw_{active_chan_id}")
+
+        if w_topic and w_kw:
+            angles = topic_validation_engine.generate_topic_angles(channel, w_topic, w_kw)
+            st.write(f"Generated **{len(angles)}** distinct angles for **{channel.channel_name}**:")
+
+            for a in angles:
+                with st.expander(f"🎬 {a.angle_type}: {a.angle_title}", expanded=True):
+                    col_ag1, col_ag2 = st.columns([2, 1])
+                    with col_ag1:
+                        st.markdown(f"**Intended Viewer:** {a.intended_viewer}")
+                        st.markdown(f"**Core Question Answered:** {a.main_question_answered}")
+                        st.markdown(f"**Primary Keyword:** `{a.primary_keyword}`")
+                        st.caption(f"Supporting Evidence: {a.supporting_evidence}")
+                    with col_ag2:
+                        st.markdown(f"**Required Research:**<br>{a.required_research}", unsafe_allow_html=True)
+                        st.markdown(f"<span style='font-size: 0.8rem; color: #64748B;'>Overlap Note: {a.potential_overlap_note}</span>", unsafe_allow_html=True)
+
+
+
 
 # ==============================================================================
 # Main Application Pipeline
@@ -9397,6 +9949,8 @@ def main() -> None:
         render_page_analytics(is_ready)
     elif page == PAGE_STRATEGY:
         render_page_strategy(is_ready)
+    elif page == PAGE_VALIDATION:
+        render_page_validation(is_ready)
     elif page == PAGE_NEW_RESEARCH:
 
         render_page_new_research(is_ready)

@@ -26,6 +26,7 @@ PAGE_DESCRIPTION_STUDIO = "✍️ Description Studio"
 PAGE_SEO_AUDIT = "🩺 SEO & Content Audit"
 PAGE_ANALYTICS = "📈 Analytics & Growth Intelligence"
 PAGE_STRATEGY = "🧭 Content Strategy Autopilot"
+PAGE_VALIDATION = "🎯 Topic Validation & Growth Intelligence"
 PAGE_USER_GUIDE = "📖 User Guide"
 PAGE_AUTH = "🔐 Studio Profile & Auth"
 
@@ -79,7 +80,12 @@ PHASE25_PAGES = [
     PAGE_STRATEGY,
 ]
 
-EXTENDED_NAVIGATION_PAGES = ALL_NAVIGATION_PAGES + PHASE22_PAGES + PHASE23_PAGES + PHASE24_PAGES + PHASE25_PAGES
+# Phase 26 Topic Validation & Growth Intelligence destinations
+PHASE26_PAGES = [
+    PAGE_VALIDATION,
+]
+
+EXTENDED_NAVIGATION_PAGES = ALL_NAVIGATION_PAGES + PHASE22_PAGES + PHASE23_PAGES + PHASE24_PAGES + PHASE25_PAGES + PHASE26_PAGES
 
 
 def apply_custom_styles() -> None:
@@ -130,6 +136,7 @@ PAGE_LABEL_CLEAN_MAP: Dict[str, str] = {
     PAGE_SEO_AUDIT: "SEO & Content Audit",
     PAGE_ANALYTICS: "Analytics & Growth Intelligence",
     PAGE_STRATEGY: "Content Strategy Autopilot",
+    PAGE_VALIDATION: "Topic Validation & Growth Intelligence",
     PAGE_NEW_RESEARCH: "New Keyword Research",
     PAGE_RESULTS: "Keyword Results",
     PAGE_PATTERNS: "Pattern Generator",
@@ -171,6 +178,7 @@ EXTENDED_PAGE_SECTION_MAP: Dict[str, str] = {
     PAGE_SEO_AUDIT: "DISCOVERY & INTELLIGENCE",
     PAGE_ANALYTICS: "DISCOVERY & INTELLIGENCE",
     PAGE_STRATEGY: "DISCOVERY & INTELLIGENCE",
+    PAGE_VALIDATION: "DISCOVERY & INTELLIGENCE",
 }
 
 
@@ -342,6 +350,7 @@ def render_navigation(current_page: str = PAGE_LANDING) -> str:
         and current_page not in PHASE23_PAGES
         and current_page not in PHASE24_PAGES
         and current_page not in PHASE25_PAGES
+        and current_page not in PHASE26_PAGES
     ):
         current_page = PAGE_LANDING
 
@@ -483,14 +492,35 @@ def render_navigation(current_page: str = PAGE_LANDING) -> str:
             format_func=format_nav_label,
         )
 
-        # If user is on a Phase 22, Phase 23, Phase 24, or Phase 25 page and hasn't changed the main radio, preserve it
+        # If user is on a Phase 22, Phase 23, Phase 24, Phase 25, or Phase 26 page and hasn't changed the main radio, preserve it
         if (
             current_page in PHASE22_PAGES
             or current_page in PHASE23_PAGES
             or current_page in PHASE24_PAGES
             or current_page in PHASE25_PAGES
+            or current_page in PHASE26_PAGES
         ) and selected_page == ALL_NAVIGATION_PAGES[default_index]:
             selected_page = current_page
+
+    # Phase 28: Quick Studio Jump Drawer (Collapsible Category Navigation for Extended Studios)
+    with st.sidebar.expander("✨ Extended Studios & Growth Engines", expanded=False):
+        st.caption("Direct access to channel growth and content strategy engines:")
+        extended_tools = [
+            (PAGE_CHANNELS, "Channel Portfolio (4 Independent Channels)"),
+            (PAGE_STRATEGY, "Content Strategy Autopilot"),
+            (PAGE_VALIDATION, "Topic Validation & Gap Engine"),
+            (PAGE_MORNING_REPORT, "Daily Morning Idea Report"),
+            (PAGE_SEO_AUDIT, "SEO & Content Audit Studio"),
+            (PAGE_DESCRIPTION_STUDIO, "Description Studio (8-Part)"),
+            (PAGE_ANALYTICS, "Channel Analytics & Growth"),
+        ]
+        for p_ext, p_desc in extended_tools:
+            is_active = (current_page == p_ext)
+            btn_type = "primary" if is_active else "secondary"
+            clean_name = PAGE_LABEL_CLEAN_MAP.get(p_ext, p_ext)
+            prefix = "▶ " if is_active else ""
+            if st.button(f"{prefix}{clean_name}", key=f"nav_ext_btn_{abs(hash(p_ext)) % 10000}", use_container_width=True, type=btn_type, help=p_desc):
+                return p_ext
 
 
     # Studio Profile Sidebar Card (Apple-Inspired White Card)

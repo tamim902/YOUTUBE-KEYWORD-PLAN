@@ -42,6 +42,7 @@ from src.intelligence.notification import NotificationService, notification_serv
 from src.intelligence.audit_engine import AuditEngine, audit_engine
 from src.intelligence.growth_engine import GrowthEngine, growth_engine
 from src.intelligence.strategy_engine import ContentStrategyAutopilot, content_strategy_autopilot
+from src.intelligence.validation_engine import TopicValidationEngine, topic_validation_engine
 
 __all__ = [
     "RelevanceBreakdown",
@@ -89,6 +90,8 @@ __all__ = [
     "growth_engine",
     "ContentStrategyAutopilot",
     "content_strategy_autopilot",
+    "TopicValidationEngine",
+    "topic_validation_engine",
 ]
 
 
