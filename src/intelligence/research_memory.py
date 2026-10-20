@@ -761,3 +761,7 @@ class ResearchMemoryEngine:
     def clear_memory_record(self, record_id: int, channel_id: int) -> bool:
         """Delete an individual research record for a specific channel."""
         return self.db.delete_research_memory_record(record_id=record_id, channel_id=channel_id)
+
+
+# Default singleton instance
+research_memory_engine = ResearchMemoryEngine()

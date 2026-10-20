@@ -33,6 +33,7 @@ from src.models.wizard import (
 )
 from src.providers.youtube import YouTubeAutocompleteProvider
 from src.storage.database import DatabaseManager, db_manager
+from src.storage.export import sanitize_dataframe_for_export
 from src.ui.research_memory_ui import render_duplicate_detection_banner
 from src.ui.components import (
     PAGE_CONTENT_OPPORTUNITIES,
@@ -841,7 +842,7 @@ def render_step_7_continue(state: WizardState) -> None:
     st.markdown("---")
     st.markdown("#### 📥 One-Click Export")
     if state.suggestions:
-        df_export = pd.DataFrame(state.suggestions)
+        df_export = sanitize_dataframe_for_export(pd.DataFrame(state.suggestions))
         csv_buffer = io.StringIO()
         df_export.to_csv(csv_buffer, index=False)
         csv_bytes = csv_buffer.getvalue().encode("utf-8")

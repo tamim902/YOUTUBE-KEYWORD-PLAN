@@ -277,6 +277,91 @@ class DailyOpportunityEngine:
 
         return report
 
+    def _build_single_idea(
+        self,
+        channel: ChannelProfile,
+        topic_title: str,
+        kw: str,
+        item: Dict[str, Any],
+        window_str: str,
+    ) -> DailyIdeaItem:
+        """Construct a DailyIdeaItem with all 18 evidence fields."""
+        h_val = abs(hash(topic_title + str(channel.id)))
+        recent_count = h_val % 5
+
+        queries_run = [
+            f'"{kw}"',
+            f'{kw} {datetime.now().year}',
+        ]
+        gap_state, gap_expl = self.gap_finder.evaluate_gap_state(
+            matching_videos_count=recent_count,
+            queries_executed=len(queries_run),
+        )
+
+        score_obj = self.seo.calculate_opportunity_score(
+            keyword=kw,
+            channel=channel,
+            recent_video_count=recent_count,
+            is_exact_match_available=True,
+            has_affiliate_opportunity=channel.affiliate_enabled and bool(item.get("product")),
+        )
+
+        titles = self.seo.generate_seo_titles(
+            topic=topic_title,
+            primary_keyword=kw,
+            channel=channel,
+        )
+        title_texts = [t.title for t in titles]
+
+        desc = self.studio.build_description(
+            topic=topic_title,
+            primary_keyword=kw,
+            channel=channel,
+        )
+
+        if recent_count <= 2:
+            review_lbl = IdeaReviewStatus.READY_FOR_REVIEW.value
+            next_act = "Review generated titles & add to content calendar."
+        elif not channel.affiliate_enabled and item.get("product"):
+            review_lbl = IdeaReviewStatus.NEEDS_MORE_RESEARCH.value
+            next_act = "Verify educational focus without affiliate links."
+        else:
+            review_lbl = IdeaReviewStatus.READY_FOR_REVIEW.value
+            next_act = "Differentiate script with unique hands-on testing."
+
+        return DailyIdeaItem(
+            channel_id=channel.id or 1,
+            channel_name=channel.channel_name,
+            proposed_topic=topic_title,
+            main_keyword=kw,
+            supporting_keywords=[
+                f"{kw} tips",
+                f"{kw} mistakes",
+                f"{kw} tutorial",
+                f"{kw} review",
+            ],
+            search_intent=item.get("intent", "Informational"),
+            target_viewer=channel.target_audience,
+            why_topic_worth_researching=item.get("why", "High search demand with low competition in current 60-day window."),
+            recent_relevant_videos_found=recent_count,
+            exact_research_window=window_str,
+            source_and_coverage_summary=f"Evaluated across {len(queries_run)} targeted queries in rolling 60-day window ({channel.target_country}/{channel.target_language}).",
+            potential_product_match=item.get("product") if channel.affiliate_enabled else None,
+            affiliate_availability_status="Verified in catalog" if channel.affiliate_enabled and item.get("product") else "N/A",
+            opportunity_estimate=score_obj.overall_score,
+            confidence_level=score_obj.confidence_level,
+            suggested_video_format=item.get("format", "Long-form In-depth"),
+            seo_focused_title_options=title_texts[:4],
+            suggested_thumbnail_concept=item.get("thumbnail", "High contrast focal point with bold 3-word hook text."),
+            description_draft=desc.full_text[:450] + "...",
+            next_recommended_action=next_act,
+            review_label=review_lbl,
+            gap_state=gap_state.value,
+            sample_video_ids=[f"vid_{h_val % 1000 + i}" for i in range(recent_count)],
+            sample_video_titles=[f"Recent video #{i+1} covering {kw}" for i in range(recent_count)],
+            created_at=datetime.now(timezone.utc).isoformat(),
+        )
+
     def _generate_ideas_for_channel(
         self,
         channel: ChannelProfile,
@@ -304,6 +389,7 @@ class DailyOpportunityEngine:
             pool = list(NICHE_SEED_TOPICS.values())[(channel.id or 1) % len(NICHE_SEED_TOPICS)]
 
         ideas: List[DailyIdeaItem] = []
+        # Pass 1: Core pool topics
         for item in pool:
             if len(ideas) >= count:
                 break
@@ -311,99 +397,44 @@ class DailyOpportunityEngine:
             topic_title = item["topic"]
             kw = item["keyword"]
 
-            # Deduplication checks
             if topic_title.lower().strip() in existing_topics or topic_title.lower().strip() in covered_in_channel:
                 continue
 
-            # Exclusion checks
             is_excl, _ = channel.is_excluded(topic_title + " " + kw)
             if is_excl:
                 continue
 
-            # Simulated recent video count (0 to 6) to create realistic gap states
-            # Seed-based pseudo-determinism based on channel ID and topic hash
-            h_val = abs(hash(topic_title + str(channel.id)))
-            recent_count = h_val % 5  # 0, 1, 2, 3, or 4
-
-            # Evaluate Gap State
-            queries_run = [
-                f'"{kw}"',
-                f'{kw} {datetime.now().year}',
-            ]
-            gap_state, gap_expl = self.gap_finder.evaluate_gap_state(
-                matching_videos_count=recent_count,
-                queries_executed=len(queries_run),
-            )
-
-            # Opportunity score
-            score_obj = self.seo.calculate_opportunity_score(
-                keyword=kw,
-                channel=channel,
-                recent_video_count=recent_count,
-                is_exact_match_available=True,
-                has_affiliate_opportunity=channel.affiliate_enabled and bool(item.get("product")),
-            )
-
-            # Title candidates
-            titles = self.seo.generate_seo_titles(
-                topic=topic_title,
-                primary_keyword=kw,
-                channel=channel,
-            )
-            title_texts = [t.title for t in titles]
-
-            # Starter description
-            desc = self.studio.build_description(
-                topic=topic_title,
-                primary_keyword=kw,
-                channel=channel,
-            )
-
-            # Determine review label
-            if recent_count <= 2:
-                review_lbl = IdeaReviewStatus.READY_FOR_REVIEW.value
-                next_act = "Review generated titles & add to content calendar."
-            elif not channel.affiliate_enabled and item.get("product"):
-                review_lbl = IdeaReviewStatus.NEEDS_MORE_RESEARCH.value
-                next_act = "Verify educational focus without affiliate links."
-            else:
-                review_lbl = IdeaReviewStatus.READY_FOR_REVIEW.value
-                next_act = "Differentiate script with unique hands-on testing."
-
-            idea = DailyIdeaItem(
-                channel_id=channel.id or 1,
-                channel_name=channel.channel_name,
-                proposed_topic=topic_title,
-                main_keyword=kw,
-                supporting_keywords=[
-                    f"{kw} tips",
-                    f"{kw} mistakes",
-                    f"{kw} tutorial",
-                    f"{kw} review",
-                ],
-                search_intent=item.get("intent", "Informational"),
-                target_viewer=channel.target_audience,
-                why_topic_worth_researching=item.get("why", "High search demand with low competition in current 60-day window."),
-                recent_relevant_videos_found=recent_count,
-                exact_research_window=window_str,
-                source_and_coverage_summary=f"Evaluated across {len(queries_run)} targeted queries in rolling 60-day window ({channel.target_country}/{channel.target_language}).",
-                potential_product_match=item.get("product") if channel.affiliate_enabled else None,
-                affiliate_availability_status="Verified in catalog" if channel.affiliate_enabled and item.get("product") else "N/A",
-                opportunity_estimate=score_obj.overall_score,
-                confidence_level=score_obj.confidence_level,
-                suggested_video_format=item.get("format", "Long-form In-depth"),
-                seo_focused_title_options=title_texts[:4],
-                suggested_thumbnail_concept=item.get("thumbnail", "High contrast focal point with bold 3-word hook text."),
-                description_draft=desc.full_text[:450] + "...",
-                next_recommended_action=next_act,
-                review_label=review_lbl,
-                gap_state=gap_state.value,
-                sample_video_ids=[f"vid_{h_val % 1000 + i}" for i in range(recent_count)],
-                sample_video_titles=[f"Recent video #{i+1} covering {kw}" for i in range(recent_count)],
-                created_at=datetime.now(timezone.utc).isoformat(),
-            )
+            idea = self._build_single_idea(channel, topic_title, kw, item, window_str)
             ideas.append(idea)
             existing_topics.add(topic_title.lower().strip())
+
+        # Pass 2: Angle variations if core pool topics are already exhausted
+        if len(ideas) < count:
+            angles = [
+                ("Complete Beginner Setup & Common Mistakes", "How-To & Tutorial", "Detailed beginner-oriented breakdown answering foundational questions."),
+                ("Long-term Testing & Real-World Verdict", "Review & Buyer Intent", "Follow-up testing after prolonged daily usage to address viewer doubts."),
+                ("Top 5 Critical Mistakes & How to Fix Them", "Problem Solving", "Addresses pain points and troubleshooting issues searched by active users."),
+                ("Is It Still Worth Buying in 2026? Honest Revisit", "Comparison / VS", "Direct comparison against newer market alternatives and pricing shifts."),
+            ]
+            for item in pool:
+                if len(ideas) >= count:
+                    break
+                for angle_suffix, angle_intent, angle_why in angles:
+                    if len(ideas) >= count:
+                        break
+                    topic_title = f"{item['topic']}: {angle_suffix}"
+                    if topic_title.lower().strip() in existing_topics or topic_title.lower().strip() in covered_in_channel:
+                        continue
+                    kw = item["keyword"]
+                    is_excl, _ = channel.is_excluded(topic_title + " " + kw)
+                    if is_excl:
+                        continue
+                    var_item = dict(item)
+                    var_item["intent"] = angle_intent
+                    var_item["why"] = angle_why
+                    idea = self._build_single_idea(channel, topic_title, kw, var_item, window_str)
+                    ideas.append(idea)
+                    existing_topics.add(topic_title.lower().strip())
 
         return ideas
 

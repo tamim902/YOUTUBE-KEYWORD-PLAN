@@ -45,6 +45,7 @@ from src.intelligence.strategy_engine import ContentStrategyAutopilot, content_s
 from src.intelligence.validation_engine import TopicValidationEngine, topic_validation_engine
 from src.intelligence.research_memory import (
     ResearchMemoryEngine,
+    research_memory_engine,
     MemoryRecord,
     MemoryType,
     MemoryStatus,
@@ -105,6 +106,7 @@ __all__ = [
     "TopicValidationEngine",
     "topic_validation_engine",
     "ResearchMemoryEngine",
+    "research_memory_engine",
     "MemoryRecord",
     "MemoryType",
     "MemoryStatus",
