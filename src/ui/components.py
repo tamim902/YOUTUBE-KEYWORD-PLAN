@@ -30,6 +30,32 @@ PAGE_VALIDATION = "🎯 Topic Validation & Growth Intelligence"
 PAGE_USER_GUIDE = "📖 User Guide"
 PAGE_AUTH = "🔐 Studio Profile & Auth"
 
+# ==============================================================================
+# Phase 37 / Master Prompt: Simplified Four Core Tools Definitions
+# ==============================================================================
+TOOL_KEYWORD_RESEARCH = "🔍 Keyword Research"
+TOOL_COMPETITOR_RESEARCH = "🎯 Competitor Research"
+TOOL_60_DAY_OPPORTUNITIES = "⚡ Last 60 Days Opportunity Finder"
+TOOL_SEO_GENERATOR = "✨ SEO Title, Description & Tags Generator"
+TOOL_SETTINGS = "⚙️ Settings"
+
+FOUR_CORE_TOOLS = [
+    TOOL_KEYWORD_RESEARCH,
+    TOOL_COMPETITOR_RESEARCH,
+    TOOL_60_DAY_OPPORTUNITIES,
+    TOOL_SEO_GENERATOR,
+]
+
+TOOL_CANONICAL_MAP = {
+    "✨ SEO Generator": TOOL_SEO_GENERATOR,
+    "⚡ 60-Day Opportunities": TOOL_60_DAY_OPPORTUNITIES,
+    "Keyword Research": TOOL_KEYWORD_RESEARCH,
+    "Competitor Research": TOOL_COMPETITOR_RESEARCH,
+    "Last 60 Days Opportunity Finder": TOOL_60_DAY_OPPORTUNITIES,
+    "SEO Generator": TOOL_SEO_GENERATOR,
+    "Settings": TOOL_SETTINGS,
+}
+
 # Core Phase 6 navigation pages
 NAVIGATION_PAGES = [
     PAGE_DASHBOARD,
@@ -624,6 +650,77 @@ def render_navigation(current_page: str = PAGE_LANDING) -> str:
         return PAGE_AUTH
 
     return selected_page
+
+
+def render_four_core_navigation(current_page: str = TOOL_KEYWORD_RESEARCH) -> str:
+    """Render the simplified 4-core-tools sidebar navigation.
+
+    Provides ONLY:
+    1. Keyword Research
+    2. Competitor Research
+    3. Last 60 Days Opportunity Finder
+    4. SEO Title, Description & Tags Generator
+    Plus a small quiet action: Settings.
+    """
+    # Brand Header
+    st.sidebar.markdown(
+        """
+        <div style="padding: 6px 2px 16px 2px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #2563EB, #7C3AED); display: flex; align-items: center; justify-content: center; color: white; font-size: 1.1rem; font-weight: bold; box-shadow: 0 2px 4px rgba(37,99,235,0.2);">
+                    KS
+                </div>
+                <div>
+                    <div style="font-weight: 700; font-size: 1.05rem; color: #0F172A; letter-spacing: -0.01em; line-height: 1.2;">Keyword Studio</div>
+                    <div style="font-size: 0.72rem; color: #64748B; font-weight: 500;">Minimal YouTube Research</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Normalize incoming page
+    normalized = TOOL_CANONICAL_MAP.get(current_page, current_page)
+    if normalized not in FOUR_CORE_TOOLS and normalized != TOOL_SETTINGS:
+        normalized = TOOL_KEYWORD_RESEARCH
+
+    is_settings = (normalized == TOOL_SETTINGS)
+
+    st.sidebar.markdown(
+        "<div style='font-size: 0.7rem; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;'>PRIMARY TOOLS</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Determine default radio index
+    radio_idx = FOUR_CORE_TOOLS.index(normalized) if normalized in FOUR_CORE_TOOLS else 0
+
+    selected_tool = st.sidebar.radio(
+        "Core Navigation",
+        options=FOUR_CORE_TOOLS,
+        index=radio_idx,
+        label_visibility="collapsed",
+        key="four_core_tools_radio",
+    )
+
+    st.sidebar.markdown("<div style='margin: 22px 0 14px 0; border-top: 1px solid #E2E8F0;'></div>", unsafe_allow_html=True)
+
+    # Quiet Settings Action Button
+    st.sidebar.markdown(
+        "<div style='font-size: 0.7rem; font-weight: 700; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px;'>SYSTEM</div>",
+        unsafe_allow_html=True,
+    )
+    settings_btn_type = "primary" if is_settings else "secondary"
+    if st.sidebar.button("⚙️ Settings & System Status", key="sidebar_quiet_settings_btn", use_container_width=True, type=settings_btn_type):
+        return TOOL_SETTINGS
+
+    # If the user was in settings, but clicked a different tool in the radio
+    if is_settings:
+        if selected_tool != FOUR_CORE_TOOLS[radio_idx]:
+            return selected_tool
+        return TOOL_SETTINGS
+
+    return selected_tool
 
 
 def render_metric_card(

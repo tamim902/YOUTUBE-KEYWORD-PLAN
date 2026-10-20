@@ -226,6 +226,18 @@ from src.storage import (
 )
 try:
     from src.ui import (
+        FOUR_CORE_TOOLS,
+        TOOL_KEYWORD_RESEARCH,
+        TOOL_COMPETITOR_RESEARCH,
+        TOOL_60_DAY_OPPORTUNITIES,
+        TOOL_SEO_GENERATOR,
+        TOOL_SETTINGS,
+        render_four_core_navigation,
+        render_keyword_research_tool,
+        render_competitor_research_tool,
+        render_opportunity_finder_tool,
+        render_seo_generator_tool,
+        render_settings_tool,
         ALL_NAVIGATION_PAGES,
         NAVIGATION_PAGES,
         PAGE_LANDING,
@@ -293,6 +305,18 @@ except ImportError:
     importlib.reload(src.ui.guide)
     importlib.reload(src.ui)
     from src.ui import (
+        FOUR_CORE_TOOLS,
+        TOOL_KEYWORD_RESEARCH,
+        TOOL_COMPETITOR_RESEARCH,
+        TOOL_60_DAY_OPPORTUNITIES,
+        TOOL_SEO_GENERATOR,
+        TOOL_SETTINGS,
+        render_four_core_navigation,
+        render_keyword_research_tool,
+        render_competitor_research_tool,
+        render_opportunity_finder_tool,
+        render_seo_generator_tool,
+        render_settings_tool,
         ALL_NAVIGATION_PAGES,
         NAVIGATION_PAGES,
         PAGE_LANDING,
@@ -9996,8 +10020,12 @@ def main() -> None:
     is_ready = bootstrap_application()
 
     # Session State Initialization
-    if "current_page" not in st.session_state:
-        st.session_state.current_page = PAGE_LANDING
+    if "current_page" not in st.session_state or (
+        st.session_state.current_page not in FOUR_CORE_TOOLS
+        and st.session_state.current_page != TOOL_SETTINGS
+        and st.session_state.current_page not in ALL_NAVIGATION_PAGES
+    ):
+        st.session_state.current_page = TOOL_KEYWORD_RESEARCH
     if "last_query" not in st.session_state:
         st.session_state.last_query = ""
     if "direct_results" not in st.session_state:
@@ -10027,8 +10055,8 @@ def main() -> None:
     if "active_brief_shortlist_id" not in st.session_state:
         st.session_state.active_brief_shortlist_id = None
 
-    # Navigation Sidebar
-    selected_page = render_navigation(current_page=st.session_state.current_page)
+    # Navigation Sidebar — Clean 4 Core Tools + Settings
+    selected_page = render_four_core_navigation(current_page=st.session_state.current_page)
     if selected_page != st.session_state.current_page:
         st.session_state.current_page = selected_page
         st.rerun()
@@ -10038,7 +10066,17 @@ def main() -> None:
 
     # Route Page
     page = st.session_state.current_page
-    if page == PAGE_LANDING:
+    if page == TOOL_KEYWORD_RESEARCH:
+        render_keyword_research_tool()
+    elif page == TOOL_COMPETITOR_RESEARCH:
+        render_competitor_research_tool()
+    elif page == TOOL_60_DAY_OPPORTUNITIES:
+        render_opportunity_finder_tool()
+    elif page == TOOL_SEO_GENERATOR:
+        render_seo_generator_tool()
+    elif page == TOOL_SETTINGS:
+        render_settings_tool()
+    elif page == PAGE_LANDING:
         render_page_landing(is_ready)
     elif page == PAGE_USER_GUIDE:
         render_page_user_guide(is_ready)
@@ -10061,7 +10099,6 @@ def main() -> None:
     elif page == PAGE_VALIDATION:
         render_page_validation(is_ready)
     elif page == PAGE_NEW_RESEARCH:
-
         render_page_new_research(is_ready)
     elif page == PAGE_RESULTS:
         render_page_results()
@@ -10082,7 +10119,7 @@ def main() -> None:
     elif page == PAGE_SETTINGS:
         render_page_settings(is_ready)
     else:
-        render_page_dashboard(is_ready, recent_searches)
+        render_keyword_research_tool()
 
 
 if __name__ == "__main__":

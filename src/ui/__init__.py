@@ -1,6 +1,14 @@
 """UI package for Streamlit components and styles."""
 
 from src.ui.components import (
+    FOUR_CORE_TOOLS,
+    TOOL_KEYWORD_RESEARCH,
+    TOOL_COMPETITOR_RESEARCH,
+    TOOL_60_DAY_OPPORTUNITIES,
+    TOOL_SEO_GENERATOR,
+    TOOL_SETTINGS,
+    TOOL_CANONICAL_MAP,
+    render_four_core_navigation,
     ALL_NAVIGATION_PAGES,
     NAVIGATION_PAGES,
     PAGE_LANDING,
@@ -58,6 +66,11 @@ from src.ui.research_memory_ui import (
     render_smart_recommendations_tab,
     render_performance_insights_tab,
 )
+from src.ui.tool_keyword_research import render_keyword_research_tool
+from src.ui.tool_competitor_research import render_competitor_research_tool
+from src.ui.tool_opportunity_finder import render_opportunity_finder_tool
+from src.ui.tool_seo_generator import render_seo_generator_tool
+from src.ui.tool_settings import render_settings_tool
 from src.ui.wizard_ui import (
     render_guided_keyword_wizard,
     get_or_create_wizard_state,
@@ -144,6 +157,19 @@ __all__ = [
     "render_research_memory_registry_tab",
     "render_smart_recommendations_tab",
     "render_performance_insights_tab",
+    "FOUR_CORE_TOOLS",
+    "TOOL_KEYWORD_RESEARCH",
+    "TOOL_COMPETITOR_RESEARCH",
+    "TOOL_60_DAY_OPPORTUNITIES",
+    "TOOL_SEO_GENERATOR",
+    "TOOL_SETTINGS",
+    "TOOL_CANONICAL_MAP",
+    "render_four_core_navigation",
+    "render_keyword_research_tool",
+    "render_competitor_research_tool",
+    "render_opportunity_finder_tool",
+    "render_seo_generator_tool",
+    "render_settings_tool",
 ]
 
 
