@@ -184,16 +184,17 @@ def render_opportunity_finder_tool() -> None:
                 )
 
                 # Format opportunity label adhering to Phase 38 exact states
-                if gap_state in (GapFinderState.NO_MATCHING_VIDEOS_FOUND, "NO MATCHING VIDEOS FOUND IN EXECUTED SEARCHES"):
+                gap_val = str(getattr(gap_state, "value", gap_state))
+                if gap_state == GapFinderState.NO_MATCHING_VIDEOS_FOUND or "NO_MATCHING" in gap_val or "NO MATCHING" in gap_val:
                     opp_label = "No matching videos found in executed searches"
                     reason = "Zero matching videos found in executed 60-day search sample. Prime first-mover potential."
                     angle = "Beginner step-by-step complete guide with clear real-world demonstration."
                     recent_date = "None in sample"
-                elif gap_state in (GapFinderState.FEW_MATCHING_RECENT_VIDEOS_FOUND, "FEW MATCHING RECENT VIDEOS FOUND"):
+                elif gap_state == GapFinderState.FEW_MATCHING_RECENT_VIDEOS_FOUND or "FEW_MATCHING" in gap_val or "FEW MATCHING" in gap_val or (1 <= recent_vids_count <= 3):
                     opp_label = "Few matching videos found"
                     reason = f"Only {recent_vids_count} recent video(s) found. High viewer demand with minimal recent competitor upload volume."
                     angle = "Comprehensive comparison answering questions skipped by existing videos."
-                elif gap_state in (GapFinderState.MATCHING_RECENT_VIDEOS_FOUND, GapFinderState.RECENT_VIDEOS_FOUND, "MATCHING RECENT VIDEOS FOUND"):
+                elif gap_state == GapFinderState.MATCHING_RECENT_VIDEOS_FOUND or "MATCHING" in gap_val or recent_vids_count >= 4:
                     opp_label = "Matching videos found"
                     reason = f"{recent_vids_count} competing videos found in the last 60 days. Topic is actively covered."
                     angle = "Unique contrarian take, specific troubleshooting edge case, or long-term durability update."
