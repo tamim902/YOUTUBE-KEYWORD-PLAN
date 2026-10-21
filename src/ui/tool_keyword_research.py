@@ -17,6 +17,7 @@ Provides a clean, fast, beginner-friendly interface for YouTube keyword discover
 from __future__ import annotations
 
 import io
+import textwrap
 import time
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -42,6 +43,15 @@ from src.ui.components import (
     TOOL_60_DAY_OPPORTUNITIES,
     TOOL_SEO_GENERATOR,
 )
+
+
+def _render_html(html_str: str) -> None:
+    """Render HTML cleanly without triggering Markdown indented code block parsing."""
+    dedented = textwrap.dedent(html_str).strip()
+    if hasattr(st, "html"):
+        st.html(dedented)
+    else:
+        st.markdown(dedented, unsafe_allow_html=True)
 
 
 def render_keyword_research_tool() -> None:
@@ -533,21 +543,6 @@ def render_keyword_research_tool() -> None:
         else:
             char_badge = f"""<span style="background: #FEE2E2; color: #B91C1C; font-weight: 700; padding: 4px 12px; border-radius: 12px; font-size: 0.82rem;">🔴 {char_count} / 500 Characters (Use Top 10 to fit limit)</span>"""
 
-        st.markdown(
-            f"""
-            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #0F172A;">
-                        🏷️ Discovered YouTube Video Tags ({len(filtered_results)} Tags)
-                    </div>
-                    <div>
-                        {char_badge}
-                    </div>
-                </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
         # Render visual vidIQ Tag Pills with individual score badges
         pills_html = []
         for r in filtered_results[:25]:
@@ -557,10 +552,23 @@ def render_keyword_research_tool() -> None:
             pills_html.append(
                 f"""<span style="background: #F8FAFC; border: 1px solid #CBD5E1; color: #1E293B; padding: 4px 10px; border-radius: 16px; margin: 3px; font-size: 0.84rem; display: inline-flex; align-items: center; gap: 6px;">🏷️ {r['Keyword']} <b style="background: {pill_bg}; color: {pill_color}; padding: 1px 6px; border-radius: 10px; font-size: 0.74rem;">{score_num}</b></span>"""
             )
-        st.markdown(
-            f"""<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px;">{''.join(pills_html)}</div></div>""",
-            unsafe_allow_html=True,
-        )
+
+        tag_studio_html = f"""
+        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 14px 18px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <div style="font-size: 0.95rem; font-weight: 700; color: #0F172A;">
+                    🏷️ Discovered YouTube Video Tags ({len(filtered_results)} Tags)
+                </div>
+                <div>
+                    {char_badge}
+                </div>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
+                {''.join(pills_html)}
+            </div>
+        </div>
+        """
+        _render_html(tag_studio_html)
 
         # 1-Click Copy Tag Buttons Row
         c_tag1, c_tag2, c_tag3 = st.columns([2.5, 2, 1.5])
@@ -621,66 +629,63 @@ def render_keyword_research_tool() -> None:
                 comp_badge_str = sel_rec.get("Competition", "🟢 Low")
                 volume_str = sel_rec.get("Search Volume", "🟢 High Demand")
 
-                st.markdown(
-                    f"""
-                    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                            <div>
-                                <h4 style="margin: 0 0 4px 0; font-size: 1.25rem; color: #0F172A; font-weight: 700;">
-                                    {dec.get('keyword', sel_kw)}
-                                </h4>
-                                <div style="font-size: 0.85rem; color: #64748B;">
-                                    Tag format: <code>{dec.get('keyword', sel_kw)}</code> &middot; Length: {len(dec.get('keyword', sel_kw))} chars
-                                </div>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 6px;">
-                                <span style="background: {source_badge_bg}; color: {source_badge_color}; font-weight: 700; font-size: 0.80rem; padding: 4px 10px; border-radius: 12px;">
-                                    {sel_rec.get('Source', 'Autocomplete')}
-                                </span>
-                                <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px;">
-                                    {dec.get('decision_status', 'Good candidate')}
-                                </span>
+                inspector_html = f"""
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <div>
+                            <h4 style="margin: 0 0 4px 0; font-size: 1.25rem; color: #0F172A; font-weight: 700;">
+                                {dec.get('keyword', sel_kw)}
+                            </h4>
+                            <div style="font-size: 0.85rem; color: #64748B;">
+                                Tag format: <code>{dec.get('keyword', sel_kw)}</code> &middot; Length: {len(dec.get('keyword', sel_kw))} chars
                             </div>
                         </div>
-
-                        <!-- 4 vidIQ KPI Cards Row -->
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px;">
-                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
-                                <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Overall Score</div>
-                                <div style="font-size: 1.15rem; font-weight: 800; color: #0F172A; margin-top: 2px;">{vidiq_score_str}</div>
-                            </div>
-                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
-                                <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Ranking Chance</div>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{ranking_chance_str}</div>
-                            </div>
-                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
-                                <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Competition</div>
-                                <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{comp_badge_str}</div>
-                            </div>
-                            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
-                                <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Search Demand</div>
-                                <div style="font-size: 1.00rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{volume_str}</div>
-                            </div>
-                        </div>
-
-                        <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.90rem; color: #1E3A8A;">
-                            💡 <b>Strategy Recommendation:</b> {dec.get('explanation', '')}
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 0.85rem; color: #334155; line-height: 1.5;">
-                            <div>• <b>Relevance to Niche:</b> {dec.get('relevance_to_niche', '')}</div>
-                            <div>• <b>Search Volume & Source:</b> {dec.get('search_volume_and_source', '')}</div>
-                            <div>• <b>Competition Evidence:</b> {dec.get('competition_evidence', '')}</div>
-                            <div>• <b>Search Intent:</b> {dec.get('search_intent', '')}</div>
-                            <div>• <b>Recent Video Evidence:</b> {dec.get('recent_video_evidence', '')}</div>
-                            <div>• <b>Data Freshness:</b> {dec.get('data_freshness', '')}</div>
-                            <div>• <b>Research Completeness:</b> {dec.get('research_completeness', '')}</div>
-                            <div>• <b>Recommended Action:</b> {dec.get('recommended_action', '')}</div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="background: {source_badge_bg}; color: {source_badge_color}; font-weight: 700; font-size: 0.80rem; padding: 4px 10px; border-radius: 12px;">
+                                {sel_rec.get('Source', 'Autocomplete')}
+                            </span>
+                            <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px;">
+                                {dec.get('decision_status', 'Good candidate')}
+                            </span>
                         </div>
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px;">
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Overall Score</div>
+                            <div style="font-size: 1.15rem; font-weight: 800; color: #0F172A; margin-top: 2px;">{vidiq_score_str}</div>
+                        </div>
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Ranking Chance</div>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{ranking_chance_str}</div>
+                        </div>
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Competition</div>
+                            <div style="font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{comp_badge_str}</div>
+                        </div>
+                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 12px; text-align: center;">
+                            <div style="font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;">Search Demand</div>
+                            <div style="font-size: 1.00rem; font-weight: 700; color: #0F172A; margin-top: 2px;">{volume_str}</div>
+                        </div>
+                    </div>
+
+                    <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.90rem; color: #1E3A8A;">
+                        💡 <b>Strategy Recommendation:</b> {dec.get('explanation', '')}
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 0.85rem; color: #334155; line-height: 1.5;">
+                        <div>• <b>Relevance to Niche:</b> {dec.get('relevance_to_niche', '')}</div>
+                        <div>• <b>Search Volume & Source:</b> {dec.get('search_volume_and_source', '')}</div>
+                        <div>• <b>Competition Evidence:</b> {dec.get('competition_evidence', '')}</div>
+                        <div>• <b>Search Intent:</b> {dec.get('search_intent', '')}</div>
+                        <div>• <b>Recent Video Evidence:</b> {dec.get('recent_video_evidence', '')}</div>
+                        <div>• <b>Data Freshness:</b> {dec.get('data_freshness', '')}</div>
+                        <div>• <b>Research Completeness:</b> {dec.get('research_completeness', '')}</div>
+                        <div>• <b>Recommended Action:</b> {dec.get('recommended_action', '')}</div>
+                    </div>
+                </div>
+                """
+                _render_html(inspector_html)
 
                 # Collapsible Scoring Formula Expander
                 with st.expander("📐 Transparent Scoring Formula & Evidence Contribution", expanded=False):
