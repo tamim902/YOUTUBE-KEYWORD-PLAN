@@ -16,6 +16,7 @@ __pycache__/
 htmlcov/
 
 # Local databases and runtime state
+*.db
 data/*.db
 data/**/*.db
 data/backups/

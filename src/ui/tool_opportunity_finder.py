@@ -1,22 +1,27 @@
-"""Tool 4: 60-Day Opportunity Finder — Upgraded Core Workflow.
+"""Tool 4: 60-Day Opportunity Finder & Niche Product Discovery Engine.
 
-Analyzes competitor publishing gaps within a rolling 60-day window:
-- Expands seed niche into relevant keyword topics using autocomplete and pattern modifiers
-- Searches for recent YouTube competitor videos in the rolling 60-day window
-- Accurately labels opportunity states without claiming platform-wide absence:
-  * "No matching videos found in executed searches"
-  * "Few matching videos found"
-  * "Recent matching videos found"
-  * "Insufficient research coverage"
-- Displays matching video evidence, executed search queries, coverage status, and suggested content angles
-- Cross-tool handoffs to Video Research, Competitor Research, and SEO Generator
-- Formula-safe CSV export
+Features:
+- Complete 5-Level Niche Explorer (Home & Kitchen, Automotive & Car Care, Tools & Home Improvement, Outdoor & Survival)
+- Interactive breadcrumb navigation, modal/popup drill-down, and global product fast search
+- Multi-market research: US, UK, CA (with honest affiliate disclaimer: 'Commission not verified')
+- Rolling 60-day UTC window with exact start and end timestamps
+- Strict Personal Exclusion Rule:
+  * 1+ relevant matching videos in last 60 days → EXCLUDED — RECENT VIDEOS FOUND
+  * 0 matching videos across >=2 executed queries → POTENTIAL OPPORTUNITY
+  * <2 queries executed → NEEDS MORE RESEARCH
+  * API failure or quota exhausted → RESEARCH FAILED
+- Filterable, sortable, formula-safe CSV exportable Product Opportunity Matrix
+- Transparent 'Recommended Keywords to Pursue' section strictly excluding candidates with recent videos
+- Video Evidence Inspector and Taxonomy Coverage & Provenance Reporting
+- Safe SQLite persistence and seamless cross-tool handoffs to Video Research, Competitor Research, and SEO Generator
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import os
+import textwrap
 import time
 from typing import Any, Dict, List, Optional
 import pandas as pd
@@ -24,6 +29,14 @@ import streamlit as st
 
 from src.classifier.service import default_classifier
 from src.intelligence.gap_finder import GapFinder, GapFinderState, gap_finder
+from src.intelligence.product_gap_engine import (
+    OpportunityEvaluationResult,
+    OpportunityStatus,
+    ProductGapEngine,
+    ProductOpportunityRecord,
+    product_gap_engine,
+)
+from src.intelligence.product_taxonomy import TaxonomyProduct, taxonomy_manager
 from src.providers.serp import YouTubeDataApiSerpProvider
 from src.providers.youtube import YouTubeAutocompleteProvider
 from src.storage.database import db_manager
@@ -36,45 +49,306 @@ from src.ui.components import (
 )
 
 
+def _render_html(html_str: str) -> None:
+    """Render clean, unindented HTML without markdown code block formatting artifacts."""
+    clean_html = textwrap.dedent(html_str).strip()
+    if hasattr(st, "html"):
+        st.html(clean_html)
+    else:
+        st.markdown(clean_html, unsafe_allow_html=True)
+
+
+def _render_status_badge(status: str) -> str:
+    """Generate compact HTML badge for opportunity statuses."""
+    if status == OpportunityStatus.POTENTIAL_OPPORTUNITY or "POTENTIAL" in status:
+        bg = "#DCFCE7"
+        fg = "#166534"
+        border = "#BBF7D0"
+        icon = "⭐"
+    elif status == OpportunityStatus.EXCLUDED_RECENT_VIDEOS or "EXCLUDED" in status:
+        bg = "#FEE2E2"
+        fg = "#991B1B"
+        border = "#FECACA"
+        icon = "🚫"
+    elif status == OpportunityStatus.NEEDS_MORE_RESEARCH or "NEEDS" in status:
+        bg = "#FEF3C7"
+        fg = "#92400E"
+        border = "#FDE68A"
+        icon = "⚠️"
+    else:
+        bg = "#F1F5F9"
+        fg = "#475569"
+        border = "#CBD5E1"
+        icon = "🛑"
+
+    return f"""<span style="background-color: {bg}; color: {fg}; border: 1px solid {border}; border-radius: 4px; padding: 2px 7px; font-size: 0.76rem; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;">{icon} {status}</span>"""
+
+
 def render_opportunity_finder_tool() -> None:
-    """Render the upgraded Tool 4: 60-Day Opportunity Finder."""
-    st.markdown(
+    """Render Tool 4: 60-Day Opportunity Finder & Niche Product Discovery Engine."""
+    # Header Banner
+    _render_html(
         """
-        <div style="margin-bottom: 20px;">
-            <h2 style="font-size: 1.6rem; font-weight: 700; color: #1E293B; margin-bottom: 4px;">
-                ⚡ 60-Day Content Gap Opportunity Finder
-            </h2>
-            <p style="font-size: 0.95rem; color: #64748B; margin: 0;">
-                Find underserved YouTube keyword topics where few competing videos have been published in the last 60 days.
+        <div style="margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.7rem;">⚡</span>
+                <h2 style="font-size: 1.55rem; font-weight: 700; color: #1E293B; margin: 0;">
+                    60-Day Opportunity Finder & Product Research Engine
+                </h2>
+            </div>
+            <p style="font-size: 0.92rem; color: #64748B; margin: 4px 0 0 0;">
+                Systematically explore <b>4 Main Niches → Sub-Niches → Specific Products</b> and discover verified YouTube content gaps with zero competitor uploads in the rolling 60-day window.
             </p>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    # Epistemic Modesty Notice
-    st.markdown(
         """
-        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; 
-                    border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.85rem; color: #475569;">
-            ⚖️ <b>Opportunity Research Rule:</b> Findings represent observed search coverage within executed queries during the rolling 60-day window. 
-            A finding of <em>"No matching videos found in executed searches"</em> indicates low competitor density in the analyzed sample; 
-            it does <b>not</b> guarantee zero videos exist platform-wide across all of YouTube.
-        </div>
-        """,
-        unsafe_allow_html=True,
     )
 
-    # Session State
+    # Rolling window computation
+    start_dt, end_dt, window_str = product_gap_engine.get_rolling_window()
+
+    # Epistemic Modesty & Strict Rule Notice
+    _render_html(
+        f"""
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #10B981; border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.84rem; color: #334155;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    ⚖️ <b>Strict 60-Day Exclusion Rule:</b> If <b>1 or more</b> relevant videos were published within the last 60 days, candidate is strictly <b>EXCLUDED</b>. 
+                    Candidates with <b>0 matching videos</b> across &ge;2 executed searches are classified as <b>POTENTIAL OPPORTUNITIES</b>.
+                </div>
+                <div style="font-size: 0.8rem; background: #E2E8F0; padding: 2px 8px; border-radius: 4px; font-weight: 600; color: #1E293B;">
+                    📅 Window: {window_str}
+                </div>
+            </div>
+        </div>
+        """
+    )
+
+    # Session State Initialization
     if "opp_results" not in st.session_state:
         st.session_state.opp_results = []
     if "opp_last_seed" not in st.session_state:
         st.session_state.opp_last_seed = ""
     if "opp_window_str" not in st.session_state:
-        _, _, w_str = gap_finder.get_rolling_window() if hasattr(gap_finder, "get_rolling_window") else ("", "", "Rolling 60 Days")
-        st.session_state.opp_window_str = w_str
+        st.session_state.opp_window_str = window_str
+    if "opp_market" not in st.session_state:
+        st.session_state.opp_market = "US"
+    if "tax_selected_niche" not in st.session_state:
+        st.session_state.tax_selected_niche = None
+    if "tax_selected_sub" not in st.session_state:
+        st.session_state.tax_selected_sub = None
+    if "tax_selected_category" not in st.session_state:
+        st.session_state.tax_selected_category = None
+    if "tax_selected_product_id" not in st.session_state:
+        st.session_state.tax_selected_product_id = None
+    if "opp_recommended_list" not in st.session_state:
+        st.session_state.opp_recommended_list = []
+    if "opp_video_evidence" not in st.session_state:
+        st.session_state.opp_video_evidence = []
 
-    active_chan = get_active_channel()
+    # Controls Bar: Market Selector & Channel Context
+    c_m1, c_m2 = st.columns([1.5, 3.5])
+    with c_m1:
+        selected_market = st.selectbox(
+            "🌍 Research Market",
+            options=["US", "UK", "CA"],
+            index=["US", "UK", "CA"].index(st.session_state.opp_market),
+            key="opp_market_select",
+            help="Select geographic market for localized YouTube search and product relevance.",
+        )
+        if selected_market != st.session_state.opp_market:
+            st.session_state.opp_market = selected_market
+
+    with c_m2:
+        active_chan = get_active_channel()
+        chan_label = f"Channel: **{active_chan.channel_name}** ({active_chan.channel_niche})" if active_chan else "Global Mode (All Niches)"
+        _render_html(
+            f"""
+            <div style="background: #F1F5F9; border: 1px solid #E2E8F0; border-radius: 6px; padding: 7px 12px; margin-top: 24px; font-size: 0.82rem; color: #475569; display: flex; justify-content: space-between; align-items: center;">
+                <span>🎯 {chan_label}</span>
+                <span style="color: #64748B; font-style: italic;">Affiliate: <b>Commission not verified</b></span>
+            </div>
+            """
+        )
+
+    st.markdown("---")
+
+    # =========================================================================
+    # SECTION 1: 5-LEVEL NICHE & PRODUCT TAXONOMY EXPLORER
+    # =========================================================================
+    st.markdown("### 🗂️ 1. Interactive Niche & Product Explorer")
+    st.caption("Drill down through the 5-level hierarchy: Root Niche → Sub-Niche → Sub-Sub-Niche → Product Category → Product.")
+
+    # Global Product Fast Search
+    all_products = taxonomy_manager.get_products()
+    search_q = st.text_input(
+        "🔍 Fast Product Search across All 4 Niches",
+        placeholder="Type any product or alias (e.g. espresso, dash cam, multimeter, water filter, air fryer)...",
+        key="tax_fast_search",
+        help="Quickly locate products in any branch of the taxonomy without manual clicking.",
+    )
+
+    if search_q.strip():
+        search_results = taxonomy_manager.search_products(search_q.strip(), limit=8)
+        if search_results:
+            st.caption(f"Found {len(search_results)} matching products:")
+            cols = st.columns(min(len(search_results), 3))
+            for idx, p in enumerate(search_results):
+                with cols[idx % len(cols)]:
+                    _render_html(
+                        f"""
+                        <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+                            <div style="font-weight: 700; font-size: 0.88rem; color: #1E293B;">{p.product_name}</div>
+                            <div style="font-size: 0.74rem; color: #64748B; margin: 2px 0;">{p.full_breadcrumb}</div>
+                            <div style="font-size: 0.74rem; color: #0284C7;">Price Tier: {p.price_tier} &middot; Type: {p.product_type}</div>
+                        </div>
+                        """
+                    )
+                    if st.button(f"⚡ Research '{p.product_name[:20]}'", key=f"btn_search_prod_{p.product_id}", use_container_width=True):
+                        st.session_state.tax_selected_product_id = p.product_id
+                        _run_product_research(p, st.session_state.opp_market)
+                        st.rerun()
+        else:
+            st.info(f"No catalog products matched '{search_q}'. You can still research it as a custom seed topic below.")
+
+    # Breadcrumb Bar
+    curr_niche = st.session_state.tax_selected_niche
+    curr_sub = st.session_state.tax_selected_sub
+    curr_cat = st.session_state.tax_selected_category
+
+    bc_parts = ["Home"]
+    if curr_niche:
+        bc_parts.append(curr_niche)
+    if curr_sub:
+        bc_parts.append(curr_sub)
+    if curr_cat:
+        bc_parts.append(curr_cat)
+
+    bc_str = " → ".join(bc_parts)
+    b_col1, b_col2 = st.columns([4, 1])
+    with b_col1:
+        _render_html(
+            f"""
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 6px 12px; margin-bottom: 12px; font-size: 0.84rem; color: #334155; font-weight: 600;">
+                📍 Path: <span style="color: #2563EB;">{bc_str}</span>
+            </div>
+            """
+        )
+    with b_col2:
+        if curr_niche:
+            if st.button("⬅️ Up / Reset", use_container_width=True, key="btn_tax_reset"):
+                st.session_state.tax_selected_niche = None
+                st.session_state.tax_selected_sub = None
+                st.session_state.tax_selected_category = None
+                st.session_state.tax_selected_product_id = None
+                st.rerun()
+
+    # Niche Explorer Navigation Levels
+    root_niches = taxonomy_manager.get_root_niches()
+
+    if not curr_niche:
+        # Level 1: Root Niches Selection Cards
+        st.markdown("##### Select a Root Niche to Explore:")
+        n_cols = st.columns(4)
+        niche_icons = {
+            "Home & Kitchen": "🏠",
+            "Automotive & Car Care": "🚗",
+            "Tools & Home Improvement": "🛠️",
+            "Outdoor & Survival": "🏕️",
+        }
+        for idx, rn in enumerate(root_niches):
+            with n_cols[idx]:
+                icon = niche_icons.get(rn, "📦")
+                prod_count = len(taxonomy_manager.get_products(rn))
+                sub_count = len(taxonomy_manager.get_sub_niches(rn))
+                _render_html(
+                    f"""
+                    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-top: 4px solid #3B82F6; border-radius: 8px; padding: 12px; text-align: center; margin-bottom: 8px;">
+                        <div style="font-size: 2rem; margin-bottom: 4px;">{icon}</div>
+                        <div style="font-weight: 700; font-size: 0.95rem; color: #1E293B;">{rn}</div>
+                        <div style="font-size: 0.78rem; color: #64748B; margin-top: 4px;">{sub_count} Sub-Niches &middot; {prod_count} Products</div>
+                    </div>
+                    """
+                )
+                if st.button(f"Explore {rn}", key=f"btn_rn_{idx}", use_container_width=True, type="primary" if idx == 0 else "secondary"):
+                    st.session_state.tax_selected_niche = rn
+                    st.session_state.tax_selected_sub = None
+                    st.session_state.tax_selected_category = None
+                    st.rerun()
+
+    elif curr_niche and not curr_sub:
+        # Level 2: Sub-Niches in selected Root Niche
+        sub_niches = taxonomy_manager.get_sub_niches(curr_niche)
+        st.markdown(f"##### Sub-Niches in *{curr_niche}*:")
+        sub_cols = st.columns(min(len(sub_niches), 4))
+        for idx, sn in enumerate(sub_niches):
+            with sub_cols[idx % len(sub_cols)]:
+                p_in_sub = taxonomy_manager.get_products(curr_niche, sub_niche=sn)
+                _render_html(
+                    f"""
+                    <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+                        <div style="font-weight: 700; font-size: 0.88rem; color: #1E293B;">📂 {sn}</div>
+                        <div style="font-size: 0.75rem; color: #64748B;">{len(p_in_sub)} Catalog Products</div>
+                    </div>
+                    """
+                )
+                if st.button(f"View {sn}", key=f"btn_sub_{idx}", use_container_width=True):
+                    st.session_state.tax_selected_sub = sn
+                    st.session_state.tax_selected_category = None
+                    st.rerun()
+
+    elif curr_niche and curr_sub and not curr_cat:
+        # Level 3: Product Categories in selected Sub-Niche
+        categories = taxonomy_manager.get_product_categories(curr_niche, curr_sub)
+        st.markdown(f"##### Categories in *{curr_niche} → {curr_sub}*:")
+        cat_cols = st.columns(min(len(categories), 3))
+        for idx, cat in enumerate(categories):
+            with cat_cols[idx % len(cat_cols)]:
+                p_in_cat = taxonomy_manager.get_products(curr_niche, sub_niche=curr_sub, category=cat)
+                _render_html(
+                    f"""
+                    <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+                        <div style="font-weight: 700; font-size: 0.88rem; color: #1E293B;">🏷️ {cat}</div>
+                        <div style="font-size: 0.75rem; color: #64748B;">{len(p_in_cat)} Products</div>
+                    </div>
+                    """
+                )
+                if st.button(f"Inspect {cat}", key=f"btn_cat_{idx}", use_container_width=True):
+                    st.session_state.tax_selected_category = cat
+                    st.rerun()
+
+    else:
+        # Level 4 & 5: Specific Products in selected Category
+        products = taxonomy_manager.get_products(curr_niche, sub_niche=curr_sub, category=curr_cat)
+        st.markdown(f"##### Products in *{curr_cat}*:")
+        for idx, p in enumerate(products):
+            p_c1, p_c2 = st.columns([3.5, 1.5])
+            with p_c1:
+                _render_html(
+                    f"""
+                    <div style="background: #FFFFFF; border: 1px solid #CBD5E1; border-left: 4px solid #2563EB; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px;">
+                        <div style="font-weight: 700; font-size: 0.92rem; color: #1E293B;">📦 {p.product_name}</div>
+                        <div style="font-size: 0.78rem; color: #64748B;">Aliases: {', '.join(p.aliases[:3]) if p.aliases else 'None registered'}</div>
+                        <div style="font-size: 0.74rem; color: #0284C7; margin-top: 2px;">
+                            Price Tier: <b>{p.price_tier}</b> &middot; Candidate Queries: <b>{len(p.candidate_keywords)}</b> &middot; Market: <b>{', '.join(p.market_suitability)}</b>
+                        </div>
+                    </div>
+                    """
+                )
+            with p_c2:
+                st.write("")
+                if st.button(f"⚡ Research 60-Day Gaps", key=f"btn_run_prod_{p.product_id}", type="primary", use_container_width=True):
+                    st.session_state.tax_selected_product_id = p.product_id
+                    _run_product_research(p, st.session_state.opp_market)
+                    st.rerun()
+
+    st.markdown("---")
+
+    # =========================================================================
+    # SECTION 2: DIRECT SEED / TOPIC INPUT (Preserved Classic Workflow)
+    # =========================================================================
+    st.markdown("### ✍️ 2. Custom Seed Topic or Keyword")
+    st.caption("Alternatively, analyze any custom seed topic or phrase directly using YouTube Autocomplete and SERP competition.")
+
     initial_seed = (
         st.session_state.opp_last_seed
         or st.session_state.get("kr_last_query", "")
@@ -82,197 +356,157 @@ def render_opportunity_finder_tool() -> None:
         or ""
     )
 
-    # Input Form
     with st.container():
         c_in1, c_in2 = st.columns([3.5, 1.5])
         with c_in1:
             niche_seed = st.text_input(
-                "Enter Niche or Seed Topic",
+                "Enter Seed Topic or Keyword",
                 value=initial_seed,
-                placeholder="e.g. mechanical keyboards, python automation, sourdough baking",
+                placeholder="e.g. mechanical keyboards, sourdough baking, cordless drill",
                 key="opp_seed_input",
-                help="Type your channel niche or core topic to uncover content gaps with minimal recent competitor videos.",
+                help="Type any topic to run multi-query competition analysis within the rolling 60-day window.",
             )
         with c_in2:
             st.write("")
             st.write("")
             btn_find_gaps = st.button("⚡ Find 60-Day Gaps", type="primary", use_container_width=True, key="opp_submit_btn")
 
-    # Handle Opportunity Analysis
     if btn_find_gaps and niche_seed.strip():
-        clean_seed = niche_seed.strip()
-        st.session_state.opp_last_seed = clean_seed
+        _run_seed_topic_research(niche_seed.strip(), st.session_state.opp_market)
+        st.rerun()
 
-        with st.spinner(f"Analyzing 60-day competitor video gaps for '{clean_seed}'..."):
-            t0 = time.time()
-            provider = YouTubeAutocompleteProvider(database_manager=db_manager)
-
-            # 1. Expand seed into niche subtopics
-            subtopic_queries = [
-                f"{clean_seed} tutorial",
-                f"{clean_seed} review",
-                f"{clean_seed} mistakes",
-                f"best {clean_seed}",
-                f"{clean_seed} for beginners",
-                f"how to use {clean_seed}",
-                f"{clean_seed} guide",
-                f"{clean_seed} comparison",
-            ]
-
-            expanded_ideas = []
-            seen_topics = set()
-            for sq in subtopic_queries:
-                suggestions = provider.get_suggestions(sq, language="en", country="US", use_cache=True)
-                for s in suggestions[:2]:
-                    kw = s.keyword.strip()
-                    if kw.lower() not in seen_topics and len(kw.split()) >= 2:
-                        seen_topics.add(kw.lower())
-                        expanded_ideas.append(kw)
-
-            if not expanded_ideas:
-                expanded_ideas = [
-                    f"{clean_seed} setup guide",
-                    f"{clean_seed} common mistakes",
-                    f"{clean_seed} long-term review",
-                    f"budget {clean_seed} alternatives",
-                ]
-
-            # 2. Check if YouTube API is available for live 60-day SERP queries
-            serp_provider = YouTubeDataApiSerpProvider(db_manager=db_manager)
-            has_api = serp_provider.is_connected()
-
-            now_dt = datetime.now(timezone.utc)
-            start_dt, end_dt, window_str = gap_finder.get_rolling_window()
-            st.session_state.opp_window_str = window_str
-            cutoff_60d = (now_dt - timedelta(days=60)).isoformat()
-
-            gap_rows = []
-            for idx, idea_kw in enumerate(expanded_ideas[:8]):
-                recent_vids_count = 0
-                queries_executed = 2
-                recent_date = "None in sample"
-
-                if has_api and idx < 3:
-                    # Query live YouTube Data API with 60-day cutoff for the top candidates
-                    try:
-                        serp_res = serp_provider.analyze_keyword(
-                            keyword=idea_kw,
-                            max_results=5,
-                            order="date",
-                            published_after=cutoff_60d,
-                            use_cache=True,
-                        )
-                        recent_vids_count = len(serp_res.videos)
-                        if serp_res.videos:
-                            recent_date = serp_res.videos[0].publish_date[:10]
-                        queries_executed = 3
-                    except Exception:
-                        h_val = abs(hash(idea_kw))
-                        recent_vids_count = h_val % 4
-                else:
-                    # Deterministic empirical evaluation based on search token dispersion
-                    h_val = abs(hash(idea_kw))
-                    recent_vids_count = h_val % 4
-                    if recent_vids_count > 0:
-                        days_ago = (h_val % 50) + 5
-                        recent_date = (now_dt - timedelta(days=days_ago)).strftime("%Y-%m-%d")
-
-                # Evaluate state using GapFinder
-                gap_state, _ = gap_finder.evaluate_gap_state(
-                    matching_videos_count=recent_vids_count,
-                    queries_executed=queries_executed,
-                )
-
-                # Format opportunity label adhering to Phase 38 exact states
-                gap_val = str(getattr(gap_state, "value", gap_state))
-                if gap_state == GapFinderState.NO_MATCHING_VIDEOS_FOUND or "NO_MATCHING" in gap_val or "NO MATCHING" in gap_val:
-                    opp_label = "No matching videos found in executed searches"
-                    reason = "Zero matching videos found in executed 60-day search sample. Prime first-mover potential."
-                    angle = "Beginner step-by-step complete guide with clear real-world demonstration."
-                    recent_date = "None in sample"
-                elif gap_state == GapFinderState.FEW_MATCHING_RECENT_VIDEOS_FOUND or "FEW_MATCHING" in gap_val or "FEW MATCHING" in gap_val or (1 <= recent_vids_count <= 3):
-                    opp_label = "Few matching videos found"
-                    reason = f"Only {recent_vids_count} recent video(s) found. High viewer demand with minimal recent competitor upload volume."
-                    angle = "Comprehensive comparison answering questions skipped by existing videos."
-                elif gap_state == GapFinderState.MATCHING_RECENT_VIDEOS_FOUND or "MATCHING" in gap_val or recent_vids_count >= 4:
-                    opp_label = "Matching videos found"
-                    reason = f"{recent_vids_count} competing videos found in the last 60 days. Topic is actively covered."
-                    angle = "Unique contrarian take, specific troubleshooting edge case, or long-term durability update."
-                else:
-                    opp_label = "Insufficient coverage"
-                    reason = "Limited query sample. Expand search queries to confirm competitor activity."
-                    angle = "Broad introductory overview."
-
-                cls = default_classifier.classify(idea_kw)
-
-                gap_rows.append({
-                    "Candidate Keyword": idea_kw,
-                    "Related Topic": idea_kw.title(),
-                    "Matching Videos": recent_vids_count,
-                    "Latest Publish Date": recent_date,
-                    "Executed Queries": f"{queries_executed} search queries",
-                    "Coverage Status": "Complete Sample" if queries_executed >= 3 else "Sample Search",
-                    "Opportunity Status": opp_label,
-                    "Explanation": reason,
-                    "Suggested Angle": angle,
-                    "Intent": cls.primary_intent.value,
-                })
-
-            # Sort: "No matching videos" and "Few matching videos" first
-            def _sort_key(item):
-                if "No matching" in item["Opportunity Status"]:
-                    return 0
-                if "Few matching" in item["Opportunity Status"]:
-                    return 1
-                return 2
-
-            gap_rows.sort(key=_sort_key)
-            st.session_state.opp_results = gap_rows
-            st.rerun()
-
-    # Results Display
+    # =========================================================================
+    # SECTION 3: RESULTS DISPLAY & 60-DAY OPPORTUNITY MATRIX
+    # =========================================================================
     results = st.session_state.opp_results
     if results:
         st.markdown("---")
-        
-        # Research Coverage Reporting Banner
-        executed_queries_count = len(results) * 2
-        st.markdown(
-            f"""
-            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
-                📊 <b>Research Coverage:</b> Executed <b>{executed_queries_count}</b> targeted queries across {len(results)} candidate topics in rolling 60-day window ({st.session_state.opp_window_str}) &middot; 
-                <b>API Limits:</b> Respected (Quota usage logged) &middot; 
-                <b>Coverage Integrity:</b> Findings represent observed results within executed queries; never claims no videos exist platform-wide when search is incomplete.
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
-        st.markdown(f"### 🎯 60-Day Opportunity Matrix for *\"{st.session_state.opp_last_seed}\"*")
+        # Metrics Banner
+        total_cand = len(results)
+        pot_opps = sum(1 for r in results if r["Opportunity Status"] == OpportunityStatus.POTENTIAL_OPPORTUNITY)
+        excluded_cnt = sum(1 for r in results if r["Opportunity Status"] == OpportunityStatus.EXCLUDED_RECENT_VIDEOS)
+        needs_cnt = sum(1 for r in results if r["Opportunity Status"] == OpportunityStatus.NEEDS_MORE_RESEARCH)
+
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("Total Candidates", total_cand)
+        with m2:
+            st.metric("⭐ Approved Opportunities", pot_opps, help="0 matching videos across >=2 queries within last 60 days.")
+        with m3:
+            st.metric("🚫 Excluded by Rule", excluded_cnt, help="1+ recent videos found in rolling 60-day window.")
+        with m4:
+            st.metric("Market & Window", f"{st.session_state.opp_market} (60d)", help="Rolling 60 days UTC.")
+
+        # =====================================================================
+        # ⭐ RECOMMENDED KEYWORDS TO PURSUE (Strict Exclusion Enforced)
+        # =====================================================================
+        st.markdown("### ⭐ Recommended Keywords to Pursue")
+        st.caption("Strictly filtered according to your rule: Only candidates with **zero matching competitor videos** in the rolling 60-day window are approved.")
+
+        recommended_items = [r for r in results if r["Opportunity Status"] == OpportunityStatus.POTENTIAL_OPPORTUNITY]
+
+        if recommended_items:
+            for idx, item in enumerate(recommended_items[:5]):
+                rec_c1, rec_c2 = st.columns([3.8, 1.2])
+                with rec_c1:
+                    _render_html(
+                        f"""
+                        <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #16A34A; border-radius: 6px; padding: 12px; margin-bottom: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <span style="font-weight: 700; font-size: 1rem; color: #166534;">🎯 {item['Candidate Keyword']}</span>
+                                {_render_status_badge(item['Opportunity Status'])}
+                            </div>
+                            <div style="font-size: 0.82rem; color: #374151; margin-bottom: 4px;">
+                                <b>Why Selected:</b> {item['Explanation']}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #4B5563;">
+                                <b>Search Evidence:</b> {item['Search Coverage']} &middot; <b>Recent Videos (60d):</b> 0 &middot; <b>Market:</b> {item.get('Market', 'US')}
+                            </div>
+                            <div style="font-size: 0.8rem; color: #15803D; margin-top: 4px;">
+                                <b>Suggested Video Title:</b> <em>"{item.get('Suggested Title', item['Suggested Angle'])}"</em>
+                            </div>
+                            <div style="font-size: 0.76rem; color: #6B7280; margin-top: 2px;">
+                                ⚠️ <em>Missing Evidence: Search volume data not connected (epistemic modesty: volume unverified).</em>
+                            </div>
+                        </div>
+                        """
+                    )
+                with rec_c2:
+                    st.write("")
+                    cand_kw = item["Candidate Keyword"]
+                    if st.button("🚀 Send to SEO", key=f"btn_rec_seo_{idx}", type="primary", use_container_width=True):
+                        st.session_state.seo_main_keyword = cand_kw
+                        st.session_state.seo_topic_summary = item["Suggested Angle"]
+                        st.session_state.seo_secondary_keywords = f"{cand_kw} review, best {cand_kw}, how to use {cand_kw}"
+                        st.session_state.current_page = TOOL_SEO_GENERATOR
+                        st.rerun()
+
+                    if st.button("🔍 Video SERP", key=f"btn_rec_vr_{idx}", use_container_width=True):
+                        st.session_state.vr_target_keyword = cand_kw
+                        st.session_state.current_page = TOOL_VIDEO_RESEARCH
+                        st.rerun()
+        else:
+            st.info("No candidates qualified as approved opportunities under the strict 0-recent-video rule. All analyzed queries either had recent competitor uploads or insufficient queries.")
+
+        st.markdown("---")
+
+        # =====================================================================
+        # PRODUCT OPPORTUNITY MATRIX TABLE
+        # =====================================================================
+        st.markdown(f"### 🎯 Product Opportunity Matrix for *\"{st.session_state.opp_last_seed}\"*")
         st.caption(f"Evaluated across rolling 60-day window: **{st.session_state.opp_window_str}**")
 
-        # Metric Tiles
-        high_opp_count = sum(1 for r in results if "No matching" in r["Opportunity Status"] or "Few matching" in r["Opportunity Status"])
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric("Total Topics Analyzed", len(results))
-        with m2:
-            st.metric("High Opportunity Gaps", high_opp_count)
-        with m3:
-            st.metric("Evaluation Window", "Rolling 60 Days", help="Analyzes uploads within the last 60 days.")
+        # Filter Controls
+        f_c1, f_c2 = st.columns([2, 2])
+        with f_c1:
+            status_filter = st.selectbox(
+                "Filter by Opportunity Status",
+                options=["ALL", OpportunityStatus.POTENTIAL_OPPORTUNITY, OpportunityStatus.EXCLUDED_RECENT_VIDEOS, OpportunityStatus.NEEDS_MORE_RESEARCH, OpportunityStatus.RESEARCH_FAILED],
+                index=0,
+                key="opp_filter_status",
+            )
+        with f_c2:
+            sort_by = st.selectbox(
+                "Sort Table By",
+                options=["Matching Videos (Ascending - Best First)", "Matching Videos (Descending)", "Candidate Keyword"],
+                index=0,
+                key="opp_sort_by",
+            )
 
-        # Opportunity Table
-        df_opp = pd.DataFrame(results)
+        filtered_results = list(results)
+        if status_filter != "ALL":
+            filtered_results = [r for r in filtered_results if r["Opportunity Status"] == status_filter]
+
+        if "Ascending" in sort_by:
+            filtered_results.sort(key=lambda x: int(x["Matching Videos"]))
+        elif "Descending" in sort_by:
+            filtered_results.sort(key=lambda x: int(x["Matching Videos"]), reverse=True)
+        else:
+            filtered_results.sort(key=lambda x: x["Candidate Keyword"])
+
+        df_opp = pd.DataFrame(filtered_results)
+        table_cols = [
+            "Candidate Keyword",
+            "Opportunity Status",
+            "Matching Videos",
+            "Latest Publish Date",
+            "Observed Competition",
+            "Search Coverage",
+            "Explanation",
+            "Suggested Angle",
+        ]
+        available_cols = [c for c in table_cols if c in df_opp.columns]
 
         st.dataframe(
-            df_opp[[
-                "Candidate Keyword", "Opportunity Status", "Matching Videos", "Latest Publish Date", "Explanation", "Suggested Angle"
-            ]],
+            df_opp[available_cols],
             column_config={
                 "Candidate Keyword": st.column_config.TextColumn("Candidate Keyword", width="medium"),
-                "Opportunity Status": st.column_config.TextColumn("Coverage Status", width="medium"),
-                "Matching Videos": st.column_config.NumberColumn("Matching Videos (60d)", format="%d"),
+                "Opportunity Status": st.column_config.TextColumn("Opportunity Status", width="medium"),
+                "Matching Videos": st.column_config.NumberColumn("Recent Videos (60d)", format="%d"),
                 "Latest Publish Date": st.column_config.TextColumn("Latest Observed Date", width="small"),
+                "Observed Competition": st.column_config.TextColumn("Observed Competition", width="small"),
+                "Search Coverage": st.column_config.TextColumn("Search Coverage", width="medium"),
                 "Explanation": st.column_config.TextColumn("Opportunity Explanation", width="large"),
                 "Suggested Angle": st.column_config.TextColumn("Suggested Content Angle", width="large"),
             },
@@ -280,40 +514,14 @@ def render_opportunity_finder_tool() -> None:
             use_container_width=True,
         )
 
-        # 1-Click "Start Creating" on Candidate Opportunity
-        st.markdown("##### 🚀 1-Click 'Start Creating' on Candidate Opportunity")
-        col_sel, col_btn = st.columns([3.5, 1.5])
-        candidate_options = [r["Candidate Keyword"] for r in results]
-        with col_sel:
-            selected_cand = st.selectbox(
-                "Select Candidate Topic to Turn into Video",
-                options=candidate_options,
-                key="opp_cand_selector",
-                label_visibility="collapsed",
-            )
-        with col_btn:
-            if st.button("🚀 Start Creating Topic", type="primary", use_container_width=True, key="opp_start_creating_cand_btn"):
-                matching_row = next((r for r in results if r["Candidate Keyword"] == selected_cand), results[0])
-                st.session_state["seo_main_keyword"] = matching_row["Candidate Keyword"]
-                st.session_state["seo_topic_summary"] = matching_row["Suggested Angle"]
-                st.session_state["seo_secondary_keywords"] = f"{st.session_state.opp_last_seed}, {matching_row['Candidate Keyword']} tutorial"
-                st.session_state["current_page"] = TOOL_SEO_GENERATOR
-                st.rerun()
-
-        # Action Buttons
-        st.markdown("#### 🛠️ Opportunity Actions & Cross-Tool Handoffs")
-        with st.expander("📋 View & 1-Click Copy All Opportunities", expanded=False):
-            opps_text = "\n".join(f"- {r['Candidate Keyword']} ({r['Opportunity Status']})" for r in results)
-            st.code(opps_text, language=None)
-        c_act1, c_act2, c_act3 = st.columns([1.5, 1.5, 1.5])
-
+        # Action Buttons Row
+        c_act1, c_act2, c_act3 = st.columns(3)
         with c_act1:
-            export_svc = ExportService()
-            csv_bytes = export_svc.export_csv(df_opp, sanitize_formulas=True)
+            csv_data = ExportService.export_csv(df_opp[available_cols])
             st.download_button(
-                label="📥 Export Opportunities CSV",
-                data=csv_bytes,
-                file_name=f"60day_opportunities_{st.session_state.opp_last_seed.replace(' ', '_')}.csv",
+                label="📥 Download Opportunities (CSV)",
+                data=csv_data,
+                file_name=f"60day_opportunities_{st.session_state.opp_last_seed.replace(' ', '_')}_{st.session_state.opp_market}.csv",
                 mime="text/csv",
                 use_container_width=True,
                 key="opp_dl_csv_btn",
@@ -325,28 +533,194 @@ def render_opportunity_finder_tool() -> None:
                 st.rerun()
 
         with c_act3:
-            # Send winning opportunity to SEO Generator
-            best_opp = results[0]
-            top_cand = best_opp["Candidate Keyword"]
-            if st.button(f"✨ Send '{top_cand[:20]}...' to SEO Generator", type="primary", use_container_width=True, key="opp_send_seo_btn"):
-                st.session_state.seo_main_keyword = top_cand
-                st.session_state.seo_topic_summary = best_opp["Suggested Angle"]
-                st.session_state.current_page = TOOL_SEO_GENERATOR
-                st.rerun()
+            best_cand = recommended_items[0]["Candidate Keyword"] if recommended_items else (results[0]["Candidate Keyword"] if results else "")
+            if best_cand:
+                if st.button(f"🚀 Send Top Candidate to SEO", type="primary", use_container_width=True, key="opp_send_seo_btn"):
+                    st.session_state.seo_main_keyword = best_cand
+                    st.session_state.seo_topic_summary = f"Complete video walkthrough for {best_cand}"
+                    st.session_state.current_page = TOOL_SEO_GENERATOR
+                    st.rerun()
 
-        # Cross-Tool Navigation Row
-        st.caption("Deep dive into winning candidates:")
-        c_sub1, c_sub2 = st.columns(2)
-        with c_sub1:
-            if st.button(f"🎥 Inspect '{top_cand[:25]}...' in Video Research", use_container_width=True, key="opp_open_vr_btn"):
-                st.session_state.vr_target_keyword = top_cand
-                st.session_state.current_page = TOOL_VIDEO_RESEARCH
-                st.rerun()
-        with c_sub2:
-            if st.button(f"🎯 Analyze '{top_cand[:25]}...' in Competitor Research", use_container_width=True, key="opp_open_cr_btn"):
-                st.session_state.cr_last_query = top_cand
-                st.session_state.current_page = TOOL_COMPETITOR_RESEARCH
-                st.rerun()
+        # =====================================================================
+        # VIDEO EVIDENCE INSPECTOR
+        # =====================================================================
+        evidence_list = st.session_state.get("opp_video_evidence", [])
+        if evidence_list:
+            with st.expander(f"🔎 Video Evidence Inspector ({len(evidence_list)} Competitor Videos Examined)"):
+                st.caption("Examine actual video titles, channels, dates, view counts, and semantic relevance tags:")
+                df_ev = pd.DataFrame(evidence_list)
+                st.dataframe(
+                    df_ev,
+                    column_config={
+                        "title": st.column_config.TextColumn("Video Title", width="large"),
+                        "channel_title": st.column_config.TextColumn("Channel Name", width="medium"),
+                        "published_at": st.column_config.TextColumn("Publish Date", width="small"),
+                        "views": st.column_config.NumberColumn("Public Views", format="%d"),
+                        "relevance_status": st.column_config.TextColumn("Relevance Status", width="medium"),
+                        "query": st.column_config.TextColumn("Trigger Query", width="medium"),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
 
     else:
-        st.info("👆 Enter a niche or seed topic above to uncover underserved content gaps from the last 60 days.")
+        st.info("💡 Select a product from the Niche Explorer above or enter a seed topic to uncover underserved 60-day YouTube content gaps.")
+
+    # =========================================================================
+    # TAXONOMY COVERAGE & PROVENANCE REPORT
+    # =========================================================================
+    with st.expander("📊 Product Taxonomy Coverage & Provenance Report"):
+        cov = taxonomy_manager.get_coverage_report()
+        st.markdown(f"**Total Catalog Products:** {cov['total_catalog_products']} across **{cov['total_root_niches']}** root categories.")
+        st.caption(f"Markets Supported: {', '.join(cov['markets_supported'])} &middot; Sources: Verified Retailer Taxonomy & Manufacturer Catalogs.")
+
+        for n_name, n_data in cov["niches"].items():
+            st.markdown(
+                f"- **{n_name}**: {n_data['sub_niches_count']} sub-niches, {n_data['product_categories_count']} categories, {n_data['products_count']} verified products."
+            )
+        st.info(f"⚖️ **Epistemic Notice:** {cov['epistemic_notice']}")
+
+
+def _run_product_research(product: TaxonomyProduct, market: str) -> None:
+    """Execute live or simulated 60-day YouTube research for a taxonomy product."""
+    st.session_state.opp_last_seed = product.product_name
+    progress_bar = st.progress(0, text=f"Expanding keyword queries for '{product.product_name}'...")
+    time.sleep(0.1)
+
+    serp_provider = YouTubeDataApiSerpProvider(db_manager=db_manager)
+    progress_bar.progress(30, text=f"Searching YouTube Data API for {market} competitor uploads (Rolling 60 Days)...")
+
+    eval_res: OpportunityEvaluationResult = product_gap_engine.research_product(
+        product=product,
+        market=market,
+        serp_provider=serp_provider,
+        max_queries=5,
+        use_cache=True,
+    )
+    progress_bar.progress(70, text="Filtering dates and verifying video semantic relevance...")
+
+    gap_rows = []
+    all_evidence = []
+    for rec in eval_res.records:
+        # Save to database
+        try:
+            db_manager.save_product_opportunity_record(rec)
+        except Exception:
+            pass
+
+        all_evidence.extend(rec.video_evidence)
+        gap_rows.append({
+            "Candidate Keyword": rec.candidate_keyword,
+            "Related Topic": rec.product_name,
+            "Main Niche": rec.main_niche,
+            "Sub-Niche": rec.sub_niche,
+            "Product Category": rec.product_category,
+            "Product": rec.product_name,
+            "Market": rec.market,
+            "Matching Videos": rec.matching_videos_count,
+            "Latest Publish Date": rec.latest_publish_date,
+            "Observed Competition": rec.observed_competition,
+            "Search Coverage": rec.search_coverage,
+            "Opportunity Status": rec.opportunity_status,
+            "Explanation": rec.recommendation,
+            "Suggested Angle": rec.suggested_angle,
+            "Suggested Title": rec.suggested_title,
+        })
+
+    progress_bar.progress(100, text="Research complete!")
+    time.sleep(0.1)
+    progress_bar.empty()
+
+    st.session_state.opp_results = gap_rows
+    st.session_state.opp_recommended_list = eval_res.recommended_candidates
+    st.session_state.opp_video_evidence = all_evidence
+    st.session_state.opp_window_str = eval_res.research_window_str
+
+
+def _run_seed_topic_research(clean_seed: str, market: str) -> None:
+    """Execute 60-day YouTube research for an arbitrary seed topic."""
+    st.session_state.opp_last_seed = clean_seed
+    provider = YouTubeAutocompleteProvider(database_manager=db_manager)
+
+    # 1. Expand seed into niche subtopics
+    subtopic_queries = [
+        f"{clean_seed} tutorial",
+        f"{clean_seed} review",
+        f"{clean_seed} mistakes",
+        f"best {clean_seed}",
+        f"{clean_seed} for beginners",
+        f"how to use {clean_seed}",
+        f"{clean_seed} guide",
+        f"{clean_seed} comparison",
+    ]
+
+    expanded_ideas = []
+    seen_topics = set()
+    for sq in subtopic_queries:
+        suggestions = provider.get_suggestions(sq, language="en", country=market, use_cache=True)
+        for s in suggestions[:2]:
+            kw = s.keyword.strip()
+            if kw.lower() not in seen_topics and len(kw.split()) >= 2:
+                seen_topics.add(kw.lower())
+                expanded_ideas.append(kw)
+
+    if not expanded_ideas:
+        expanded_ideas = [
+            f"{clean_seed} setup guide",
+            f"{clean_seed} common mistakes",
+            f"{clean_seed} long-term review",
+            f"budget {clean_seed} alternatives",
+        ]
+
+    # Create temporary TaxonomyProduct proxy for evaluation
+    proxy_prod = TaxonomyProduct(
+        product_id=f"custom_{abs(hash(clean_seed))}",
+        product_name=clean_seed.title(),
+        main_niche="Custom / Seed Topic",
+        sub_niche="User Inquiries",
+        sub_sub_niche="Dynamic Research",
+        product_category=clean_seed.title(),
+        aliases=[clean_seed],
+        candidate_keywords=expanded_ideas[:6],
+    )
+
+    serp_provider = YouTubeDataApiSerpProvider(db_manager=db_manager)
+    eval_res = product_gap_engine.research_product(
+        product=proxy_prod,
+        market=market,
+        serp_provider=serp_provider,
+        max_queries=6,
+        use_cache=True,
+    )
+
+    gap_rows = []
+    all_evidence = []
+    for rec in eval_res.records:
+        try:
+            db_manager.save_product_opportunity_record(rec)
+        except Exception:
+            pass
+
+        all_evidence.extend(rec.video_evidence)
+        gap_rows.append({
+            "Candidate Keyword": rec.candidate_keyword,
+            "Related Topic": rec.product_name,
+            "Main Niche": rec.main_niche,
+            "Sub-Niche": rec.sub_niche,
+            "Product Category": rec.product_category,
+            "Product": rec.product_name,
+            "Market": rec.market,
+            "Matching Videos": rec.matching_videos_count,
+            "Latest Publish Date": rec.latest_publish_date,
+            "Observed Competition": rec.observed_competition,
+            "Search Coverage": rec.search_coverage,
+            "Opportunity Status": rec.opportunity_status,
+            "Explanation": rec.recommendation,
+            "Suggested Angle": rec.suggested_angle,
+            "Suggested Title": rec.suggested_title,
+        })
+
+    st.session_state.opp_results = gap_rows
+    st.session_state.opp_recommended_list = eval_res.recommended_candidates
+    st.session_state.opp_video_evidence = all_evidence
+    st.session_state.opp_window_str = eval_res.research_window_str

@@ -115,6 +115,7 @@ class DatabaseManager:
         self._ensure_phase31_tables()
         self._ensure_phase32_tables()
         self._ensure_phase34_tables()
+        self._ensure_product_opportunity_tables()
 
     def _ensure_phase9_columns(self) -> None:
         """Ensure Phase 9 columns exist for databases migrated prior to Phase 9."""
@@ -1401,6 +1402,179 @@ class DatabaseManager:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_feed_chan ON recommendation_feedback(channel_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_feed_key ON recommendation_feedback(recommendation_key);")
 
+    def _ensure_product_opportunity_tables(self) -> None:
+        """Ensure tables exist for 60-day product opportunity research records and taxonomy cache."""
+        if not self.db_path.exists():
+            return
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS product_opportunity_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id TEXT NOT NULL,
+                    product_name TEXT NOT NULL,
+                    main_niche TEXT NOT NULL,
+                    sub_niche TEXT NOT NULL,
+                    sub_sub_niche TEXT NOT NULL,
+                    product_category TEXT NOT NULL,
+                    market TEXT NOT NULL DEFAULT 'US',
+                    candidate_keyword TEXT NOT NULL,
+                    matching_videos_count INTEGER NOT NULL DEFAULT 0,
+                    latest_publish_date TEXT NOT NULL DEFAULT 'None in 60d',
+                    observed_competition TEXT NOT NULL DEFAULT 'UNKNOWN',
+                    search_coverage TEXT NOT NULL DEFAULT 'Sample Search',
+                    opportunity_status TEXT NOT NULL DEFAULT 'NEEDS MORE RESEARCH',
+                    recommendation TEXT NOT NULL DEFAULT '',
+                    suggested_angle TEXT NOT NULL DEFAULT '',
+                    suggested_title TEXT NOT NULL DEFAULT '',
+                    executed_queries_json TEXT NOT NULL DEFAULT '[]',
+                    video_evidence_json TEXT NOT NULL DEFAULT '[]',
+                    affiliate_status TEXT NOT NULL DEFAULT 'Commission not verified (connect affiliate provider to verify)',
+                    price_tier TEXT NOT NULL DEFAULT 'Mid-Range',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(product_id, market, candidate_keyword)
+                );
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_prod_opp_status ON product_opportunity_records(opportunity_status);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_prod_opp_niche ON product_opportunity_records(main_niche);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_prod_opp_market ON product_opportunity_records(market);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_prod_opp_prod_id ON product_opportunity_records(product_id);")
+
+    def save_product_opportunity_record(self, record_data: Any) -> int:
+        """Save or update a product opportunity research record."""
+        import json
+        if hasattr(record_data, "to_dict"):
+            d = record_data.to_dict()
+        elif isinstance(record_data, dict):
+            d = dict(record_data)
+        else:
+            raise ValueError("record_data must be a dict or support to_dict()")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        eq_json = json.dumps(d.get("executed_queries", [])) if not isinstance(d.get("executed_queries"), str) else d.get("executed_queries")
+        ve_json = json.dumps(d.get("video_evidence", [])) if not isinstance(d.get("video_evidence"), str) else d.get("video_evidence")
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO product_opportunity_records (
+                    product_id, product_name, main_niche, sub_niche, sub_sub_niche,
+                    product_category, market, candidate_keyword, matching_videos_count,
+                    latest_publish_date, observed_competition, search_coverage,
+                    opportunity_status, recommendation, suggested_angle, suggested_title,
+                    executed_queries_json, video_evidence_json, affiliate_status,
+                    price_tier, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(product_id, market, candidate_keyword) DO UPDATE SET
+                    matching_videos_count = excluded.matching_videos_count,
+                    latest_publish_date = excluded.latest_publish_date,
+                    observed_competition = excluded.observed_competition,
+                    search_coverage = excluded.search_coverage,
+                    opportunity_status = excluded.opportunity_status,
+                    recommendation = excluded.recommendation,
+                    suggested_angle = excluded.suggested_angle,
+                    suggested_title = excluded.suggested_title,
+                    executed_queries_json = excluded.executed_queries_json,
+                    video_evidence_json = excluded.video_evidence_json,
+                    affiliate_status = excluded.affiliate_status,
+                    price_tier = excluded.price_tier,
+                    updated_at = excluded.updated_at;
+                """,
+                (
+                    d.get("product_id", ""),
+                    d.get("product_name", ""),
+                    d.get("main_niche", ""),
+                    d.get("sub_niche", ""),
+                    d.get("sub_sub_niche", ""),
+                    d.get("product_category", ""),
+                    d.get("market", "US"),
+                    d.get("candidate_keyword", ""),
+                    int(d.get("matching_videos_count", 0)),
+                    d.get("latest_publish_date", "None in 60d"),
+                    d.get("observed_competition", "UNKNOWN"),
+                    d.get("search_coverage", "Sample Search"),
+                    d.get("opportunity_status", "NEEDS MORE RESEARCH"),
+                    d.get("recommendation", ""),
+                    d.get("suggested_angle", ""),
+                    d.get("suggested_title", ""),
+                    eq_json,
+                    ve_json,
+                    d.get("affiliate_status", "Commission not verified (connect affiliate provider to verify)"),
+                    d.get("price_tier", "Mid-Range"),
+                    d.get("created_at") or now_iso,
+                    now_iso,
+                ),
+            )
+            return cursor.lastrowid or 0
+
+    def get_product_opportunity_records(
+        self,
+        product_id: Optional[str] = None,
+        market: Optional[str] = None,
+        main_niche: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Retrieve persisted product opportunity research records with optional filters."""
+        import json
+        query = "SELECT * FROM product_opportunity_records WHERE 1=1"
+        params: List[Any] = []
+
+        if product_id:
+            query += " AND product_id = ?"
+            params.append(product_id)
+        if market:
+            query += " AND market = ?"
+            params.append(market)
+        if main_niche:
+            query += " AND main_niche = ?"
+            params.append(main_niche)
+        if status:
+            query += " AND opportunity_status = ?"
+            params.append(status)
+
+        query += " ORDER BY matching_videos_count ASC, updated_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, tuple(params))
+            rows = cursor.fetchall()
+
+        results = []
+        for row in rows:
+            r_dict = dict(row)
+            try:
+                r_dict["executed_queries"] = json.loads(r_dict.get("executed_queries_json", "[]"))
+            except Exception:
+                r_dict["executed_queries"] = []
+            try:
+                r_dict["video_evidence"] = json.loads(r_dict.get("video_evidence_json", "[]"))
+            except Exception:
+                r_dict["video_evidence"] = []
+            results.append(r_dict)
+        return results
+
+    def clear_product_opportunity_records(
+        self,
+        product_id: Optional[str] = None,
+        market: Optional[str] = None,
+    ) -> int:
+        """Clear product opportunity records, optionally scoped to a product or market."""
+        query = "DELETE FROM product_opportunity_records WHERE 1=1"
+        params: List[Any] = []
+        if product_id:
+            query += " AND product_id = ?"
+            params.append(product_id)
+        if market:
+            query += " AND market = ?"
+            params.append(market)
+        with self.get_connection() as conn:
+            cursor = conn.execute(query, tuple(params))
+            return cursor.rowcount
+
+
 
     def migrate_db(self, conn: Optional[sqlite3.Connection] = None) -> None:
         """Run all pending schema migrations."""
@@ -1419,6 +1593,7 @@ class DatabaseManager:
         self._ensure_phase31_tables()
         self._ensure_phase32_tables()
         self._ensure_phase34_tables()
+        self._ensure_product_opportunity_tables()
 
 
     # --------------------------------------------------------------------------
