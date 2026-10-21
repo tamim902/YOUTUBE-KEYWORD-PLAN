@@ -452,6 +452,22 @@ class DailyOpportunityEngine:
                     ideas.append(idea)
                     existing_topics.add(topic_title.lower().strip())
 
+        # Pass 3: Fresh rotational cycle if both core and standard variations are in recent history
+        if len(ideas) < count:
+            cycle_num = (len(existing_topics) // max(1, len(pool))) + 1
+            for item in pool:
+                if len(ideas) >= count:
+                    break
+                topic_title = f"{item['topic']} (Research Focus {cycle_num})"
+                kw = item["keyword"]
+                is_excl, _ = channel.is_excluded(topic_title + " " + kw)
+                if is_excl:
+                    continue
+                var_item = dict(item)
+                idea = self._build_single_idea(channel, topic_title, kw, var_item, window_str)
+                ideas.append(idea)
+                existing_topics.add(topic_title.lower().strip())
+
         return ideas
 
 

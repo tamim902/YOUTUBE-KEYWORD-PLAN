@@ -17,6 +17,7 @@ import streamlit as st
 from src.intelligence.channel_manager import ChannelManager, channel_manager
 from src.intelligence.daily_engine import daily_opportunity_engine
 from src.models.channel import ChannelProfile, get_default_four_channels
+from src.models.morning_report import DailyIdeaItem, IdeaReviewStatus
 from src.storage.database import db_manager
 from src.ui.components import TOOL_SEO_GENERATOR
 
@@ -57,6 +58,7 @@ def switch_active_channel(from_id: int, to_id: int, channels: List[ChannelProfil
 
     # 2. Update active channel id
     st.session_state["active_channel_id"] = to_id
+    st.session_state["show_channel_ideas_panel"] = True
 
     # 3. Find incoming channel profile
     target_chan = next((c for c in channels if c.id == to_id), None)
@@ -128,10 +130,14 @@ def render_channel_header_bar() -> ChannelProfile:
                 st.rerun()
 
     with c_pills[4]:
-        # Quick Ideas Action Button
-        show_ideas_btn = st.button("💡 Find Channel Ideas", type="primary", use_container_width=True, key="hdr_find_ideas_btn")
+        # Quick Ideas Action Button (Defaults to open on startup or channel selection)
+        if "show_channel_ideas_panel" not in st.session_state:
+            st.session_state["show_channel_ideas_panel"] = True
+        is_open = bool(st.session_state.get("show_channel_ideas_panel", True))
+        btn_type = "primary" if is_open else "secondary"
+        show_ideas_btn = st.button("💡 Video Ideas", type=btn_type, use_container_width=True, key="hdr_find_ideas_btn")
         if show_ideas_btn:
-            st.session_state["show_channel_ideas_panel"] = not st.session_state.get("show_channel_ideas_panel", False)
+            st.session_state["show_channel_ideas_panel"] = not is_open
             st.rerun()
 
     # Active Channel Summary Banner
@@ -230,19 +236,37 @@ def render_channel_editor(profile: ChannelProfile) -> None:
                 st.rerun()
 
 
+def normalize_format_label(raw_format: str) -> str:
+    """Map format string to one of the 6 canonical formats: Tutorial, Comparison, List, Deep Dive, Case Study, Quick Tip."""
+    rf = (raw_format or "").lower()
+    if any(k in rf for k in ["list", "best-of", "listicle", "top", "essential", "tour", "recommendations"]):
+        return "List"
+    elif any(k in rf for k in ["vs", "comparison", "shootout", "versus", "compare"]):
+        return "Comparison"
+    elif any(k in rf for k in ["case study", "experiment", "breakdown"]):
+        return "Case Study"
+    elif any(k in rf for k in ["quick tip", "tip", "hack", "short", "minute"]):
+        return "Quick Tip"
+    elif any(k in rf for k in ["deep dive", "deep-dive", "architecture", "benchmark", "analysis", "in-depth"]):
+        return "Deep Dive"
+    elif any(k in rf for k in ["how-to", "tutorial", "guide", "walkthrough", "step-by-step", "build"]):
+        return "Tutorial"
+    return "Tutorial"
+
+
 def render_channel_ideas_panel(profile: ChannelProfile) -> None:
     """Render research-backed video ideas tailored specifically to the active channel."""
     st.markdown(
         f"""
         <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #2563EB; 
-                    border-radius: 8px; padding: 14px 18px; margin: 12px 0 20px 0;">
+                    border-radius: 8px; padding: 14px 18px; margin: 12px 0 16px 0;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
                 <div>
                     <h3 style="margin: 0 0 4px 0; font-size: 1.25rem; font-weight: 700; color: #0F172A;">
-                        💡 Research-Backed Video Ideas for {profile.channel_name}
+                        💡 Video Ideas for Your Channel
                     </h3>
                     <p style="margin: 0; font-size: 0.88rem; color: #64748B;">
-                        Tailored to <b>{profile.channel_niche}</b> ({profile.target_audience}) &middot; Rolling 60-day gap evidence
+                        Tailored to <b>{profile.channel_name}</b> &middot; Niche: <b>{profile.channel_niche}</b> &middot; Target Audience: <i>{profile.target_audience}</i> &middot; Rolling 60-day gap evidence
                     </p>
                 </div>
             </div>
@@ -251,8 +275,108 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
         unsafe_allow_html=True,
     )
 
-    with st.spinner(f"Analyzing video opportunities and 60-day competitor gaps for '{profile.channel_name}'..."):
-        ideas = daily_opportunity_engine._generate_ideas_for_channel(channel=profile, count=4)
+    # Top Action Bar: Primary "Research New Ideas" button + Settings toggle
+    col_act_left, col_act_right = st.columns([3.5, 1.5])
+    with col_act_left:
+        if st.button("🔄 Research New Ideas", type="primary", use_container_width=False, key=f"btn_res_new_ideas_{profile.id}"):
+            st.session_state[f"channel_ideas_{profile.id}"] = None
+            st.session_state[f"ideas_seed_{profile.id}"] = st.session_state.get(f"ideas_seed_{profile.id}", 0) + 1
+            st.rerun()
+    with col_act_right:
+        if st.button("✕ Close Ideas Panel", use_container_width=True, key=f"btn_close_ideas_{profile.id}"):
+            st.session_state["show_channel_ideas_panel"] = False
+            st.rerun()
+
+    # Expander: Optional Automated Morning Research Settings
+    with st.expander("⚙️ Automated Morning Research Settings & Local Scheduling", expanded=False):
+        st.markdown(
+            """
+            <div style="font-size: 0.86rem; color: #334155; margin-bottom: 8px;">
+                Configure automated daily morning research runs across all 4 saved channels. Generated ideas are saved locally to SQLite so fresh ideas are ready without waiting.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.info("ℹ️ **Notice:** Scheduled automated runs require your computer and the Keyword Studio server to remain running at the scheduled time.")
+
+        # Settings Form
+        s_en = db_manager.get_setting("morning_research_enabled", "false") == "true"
+        s_time = db_manager.get_setting("morning_research_time", "07:00")
+        s_tz = db_manager.get_setting("morning_research_timezone", "UTC")
+
+        c_s1, c_s2, c_s3 = st.columns([1.5, 1.5, 2])
+        with c_s1:
+            cfg_enabled = st.toggle("Enable Daily Research", value=s_en, key="toggle_morning_enabled")
+        with c_s2:
+            cfg_time = st.text_input("Scheduled Time (HH:MM)", value=s_time, max_chars=5, key="input_morning_time")
+        with c_s3:
+            cfg_tz = st.selectbox("Local Timezone", ["UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Dhaka", "Asia/Kolkata", "Asia/Tokyo"], index=0, key="sel_morning_tz")
+
+        if st.button("💾 Save Schedule Settings", key="btn_save_morning_cfg"):
+            db_manager.save_setting("morning_research_enabled", "true" if cfg_enabled else "false")
+            db_manager.save_setting("morning_research_time", cfg_time.strip() or "07:00")
+            db_manager.save_setting("morning_research_timezone", cfg_tz)
+            st.success("✅ Morning research schedule settings saved!")
+
+        st.divider()
+
+        # Trigger Run Now & Display Last Successful Run
+        latest_reports = db_manager.get_daily_morning_reports(limit=1)
+        last_rep = latest_reports[0] if latest_reports else None
+
+        c_run1, c_run2 = st.columns([3, 2])
+        with c_run1:
+            if last_rep:
+                st.caption(
+                    f"🕒 **Last Successful Run:** {last_rep.get('run_date')} &middot; "
+                    f"Status: **{last_rep.get('status')}** &middot; "
+                    f"{last_rep.get('total_ideas_generated', 0)} ideas generated across {last_rep.get('total_channels_processed', 0)} channels"
+                )
+            else:
+                st.caption("🕒 **Last Successful Run:** No reports recorded yet.")
+
+        with c_run2:
+            force_run = st.checkbox("Force Re-run (Bypass duplicate check)", value=False, key="chk_force_morning_run")
+            if st.button("🚀 Run Morning Research Now", type="secondary", use_container_width=True, key="btn_trigger_morning_now"):
+                today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                is_duplicate = (last_rep and last_rep.get("run_date") == today_str and last_rep.get("status") == "Completed")
+
+                if is_duplicate and not force_run:
+                    st.warning(f"ℹ️ Morning research has already run today ({today_str}). To refresh anyway, check 'Force Re-run'.")
+                else:
+                    with st.spinner("Executing morning research across all 4 channels (respecting quotas & channel isolation)..."):
+                        try:
+                            rep = daily_opportunity_engine.run_daily_morning_report(
+                                timezone_name=cfg_tz,
+                                scheduled_time=cfg_time,
+                                ideas_per_channel=4,
+                            )
+                            db_manager.save_setting("morning_research_last_run", datetime.now(timezone.utc).isoformat())
+                            st.session_state[f"channel_ideas_{profile.id}"] = None
+                            st.success(f"✅ Morning research completed! Generated {rep.total_ideas_generated} ideas across {rep.total_channels_processed} channels.")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"❌ Morning research failed: {str(ex)}")
+
+    # Transparent Ranking Disclaimer
+    st.markdown(
+        """
+        <div style="font-size: 0.78rem; color: #64748B; margin-top: 4px; margin-bottom: 14px;">
+            ℹ️ <i>Ranking is an analytical estimate based on current public YouTube search patterns and content gaps. It does not predict algorithm behavior or guarantee views.</i>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Fetch / Generate Tailored Ideas
+    ideas_key = f"channel_ideas_{profile.id}"
+    ideas = st.session_state.get(ideas_key)
+    if not ideas:
+        with st.spinner(f"Analyzing YouTube search patterns and 60-day competitor gaps for '{profile.channel_name}'..."):
+            ideas = daily_opportunity_engine._generate_ideas_for_channel(channel=profile, count=5)
+            # Rank ideas by transparent, explainable opportunity score descending
+            ideas = sorted(ideas, key=lambda x: getattr(x, "opportunity_estimate", 0), reverse=True)
+            st.session_state[ideas_key] = ideas
 
     if not ideas:
         st.warning("No fresh ideas generated for this niche. Try updating your niche and subtopics in the profile editor.")
@@ -260,49 +384,97 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
 
     # Render each idea as a clean, actionable card
     for idx, idea in enumerate(ideas):
+        norm_fmt = normalize_format_label(idea.suggested_video_format)
+        score_val = getattr(idea, "opportunity_estimate", 0.0)
+        is_sparse = (
+            getattr(idea, "review_label", "") == IdeaReviewStatus.NEEDS_MORE_RESEARCH.value
+            or getattr(idea, "confidence_level", "") == "Sparse"
+            or score_val < 55.0
+            or (idea.recent_relevant_videos_found == 0 and len(idea.supporting_keywords) < 2)
+        )
+
         with st.container():
+            # Rank #1 Rationale Callout
+            if idx == 0:
+                gap_note = "zero competing videos (high content gap)" if idea.recent_relevant_videos_found == 0 else f"{idea.recent_relevant_videos_found} recent matching videos"
+                st.markdown(
+                    f"""
+                    <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #2563EB; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.88rem; color: #1E3A8A;">
+                        🏆 <b>Ranked #1 Rationale:</b> Grounded in active channel niche (<b>{profile.channel_niche}</b>) with {gap_note} and clear <b>{idea.search_intent}</b> viewer intent in rolling 60-day window.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+            # Idea Card Box
+            suggested_title = idea.seo_focused_title_options[0] if idea.seo_focused_title_options else idea.proposed_topic
+            status_badge = (
+                """<span style="background: #FEF3C7; color: #92400E; font-weight: 700; font-size: 0.76rem; padding: 3px 10px; border-radius: 12px;">⚠️ Needs More Research</span>"""
+                if is_sparse else
+                f"""<span style="background: #DCFCE7; color: #166534; font-weight: 700; font-size: 0.76rem; padding: 3px 10px; border-radius: 12px;">Score: {score_val:.0f}/100 &middot; High Opportunity</span>"""
+            )
+            recent_vids_text = "No recent matching videos found (High Content Gap!)" if idea.recent_relevant_videos_found == 0 else f"{idea.recent_relevant_videos_found} recent matching videos found in rolling 60-day window"
+
             st.markdown(
                 f"""
-                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.76rem; padding: 3px 10px; border-radius: 12px; text-transform: uppercase;">
-                            Idea #{idx+1} &middot; {idea.suggested_video_format}
+                        <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.78rem; padding: 3px 10px; border-radius: 12px; text-transform: uppercase;">
+                            Rank #{idx+1} &middot; {norm_fmt}
                         </span>
-                        <span style="font-size: 0.78rem; color: #64748B;">
-                            60-Day Gap: <b>{idea.recent_relevant_videos_found} matching recent videos</b>
-                        </span>
+                        <div>
+                            {status_badge}
+                        </div>
                     </div>
                     <h4 style="margin: 0 0 6px 0; font-size: 1.15rem; color: #0F172A; font-weight: 700;">
                         {idea.proposed_topic}
                     </h4>
-                    <div style="font-size: 0.88rem; color: #334155; margin-bottom: 8px;">
-                        🎯 <b>Suggested Title:</b> <code>{idea.seo_focused_title_options[0] if idea.seo_focused_title_options else idea.proposed_topic}</code>
+                    <div style="font-size: 0.90rem; color: #1E293B; margin-bottom: 8px;">
+                        🎯 <b>Suggested Title:</b> <code>{suggested_title}</code>
                     </div>
-                    <div style="font-size: 0.85rem; color: #475569; line-height: 1.5; margin-bottom: 10px;">
-                        • <b>Why it fits:</b> {idea.why_topic_worth_researching}<br>
-                        • <b>Keyword Evidence:</b> Primary: <code>{idea.main_keyword}</code> (Search Intent: {idea.search_intent})<br>
-                        • <b>Unique Angle:</b> {idea.suggested_thumbnail_concept}
-                    </div>
-                    <div style="font-size: 0.75rem; color: #94A3B8;">
-                        {idea.source_and_coverage_summary}
+                    <div style="font-size: 0.85rem; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                        • <b>Why It Fits Your Channel:</b> Aligned with <b>{profile.channel_niche}</b> for target audience <i>{profile.target_audience}</i>. {idea.why_topic_worth_researching}<br>
+                        • <b>Primary Keyword:</b> <code>{idea.main_keyword}</code> (Search Intent: {idea.search_intent})<br>
+                        • <b>Recent Matching Videos:</b> {recent_vids_text}<br>
+                        • <b>Search Volume Evidence:</b> Volume unavailable - based on autocomplete demand signals (Zero fabrication policy)<br>
+                        • <b>Content Gap Evidence:</b> {idea.why_topic_worth_researching} ({idea.gap_state})<br>
+                        • <b>Suggested Format:</b> {norm_fmt} (Tutorial, Comparison, List, Deep Dive, Case Study, Quick Tip)
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-            # One-click actions: "Start Creating" & "Save Idea"
-            col_act1, col_act2 = st.columns([2, 1.8])
+            # 1-Click Copy snippet (Includes Streamlit built-in copy-to-clipboard button)
+            copy_snippet = f"Topic: {idea.proposed_topic}\nTitle: {suggested_title}\nPrimary Keyword: {idea.main_keyword}"
+            st.code(copy_snippet, language="text")
+
+            # One-click Actions: "Start Creating" & "Save Idea"
+            col_act1, col_act2 = st.columns([2.5, 1.5])
             with col_act1:
                 if st.button(f"🚀 Start Creating Idea #{idx+1}", type="primary", use_container_width=True, key=f"start_creating_btn_{profile.id}_{idx}"):
-                    # Transfer idea directly to Tool 5 (SEO Generator)
+                    # 1-Click Research Handoff: Immediate transfer to Tool 5 (SEO Generator)
                     st.session_state["seo_main_keyword"] = idea.main_keyword
+                    st.session_state["gen_main_kw_input"] = idea.main_keyword
+
                     st.session_state["seo_topic_summary"] = idea.proposed_topic
-                    st.session_state["seo_secondary_keywords"] = ", ".join(idea.supporting_keywords[:4])
-                    st.session_state["seo_target_viewer"] = idea.target_viewer
+                    st.session_state["gen_topic_summary_input"] = idea.proposed_topic
+
+                    sec_str = ", ".join(idea.supporting_keywords[:4])
+                    st.session_state["seo_secondary_keywords"] = sec_str
+                    st.session_state["gen_sec_kws_input"] = sec_str
+
+                    target_aud = idea.target_viewer or profile.target_audience
+                    st.session_state["seo_target_viewer"] = target_aud
+                    st.session_state["gen_target_viewer_input"] = target_aud
+
+                    is_short = "short" in idea.suggested_video_format.lower()
+                    st.session_state["gen_format_radio"] = "Shorts (9:16)" if is_short else "Long-form (16:9)"
+
                     st.session_state["current_page"] = TOOL_SEO_GENERATOR
                     st.session_state["show_channel_ideas_panel"] = False
                     st.rerun()
+
             with col_act2:
                 saved_key = f"saved_ideas_channel_{profile.id}"
                 if saved_key not in st.session_state:
@@ -313,11 +485,11 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
                         st.session_state[saved_key].append({
                             "topic": idea.proposed_topic,
                             "keyword": idea.main_keyword,
-                            "format": idea.suggested_video_format,
-                            "title": idea.seo_focused_title_options[0] if idea.seo_focused_title_options else idea.proposed_topic,
+                            "format": norm_fmt,
+                            "title": suggested_title,
                             "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
                         })
-                        st.success("✅ Saved to channel ideas!")
+                        st.success("✅ Saved to channel backlog!")
                         st.rerun()
                 else:
                     st.markdown("<div style='font-size: 0.85rem; color: #15803D; padding-top: 6px;'>⭐ Saved in Backlog</div>", unsafe_allow_html=True)
@@ -334,13 +506,13 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
                 with c_s2:
                     if st.button(f"🚀 Create", key=f"create_saved_{profile.id}_{s_idx}", use_container_width=True):
                         st.session_state["seo_main_keyword"] = s_item["keyword"]
+                        st.session_state["gen_main_kw_input"] = s_item["keyword"]
                         st.session_state["seo_topic_summary"] = s_item["topic"]
+                        st.session_state["gen_topic_summary_input"] = s_item["topic"]
                         st.session_state["seo_secondary_keywords"] = s_item["keyword"]
+                        st.session_state["gen_sec_kws_input"] = s_item["keyword"]
                         st.session_state["seo_target_viewer"] = profile.target_audience
+                        st.session_state["gen_target_viewer_input"] = profile.target_audience
                         st.session_state["current_page"] = TOOL_SEO_GENERATOR
                         st.session_state["show_channel_ideas_panel"] = False
                         st.rerun()
-
-    if st.button("✕ Close Ideas Panel", key="close_ideas_panel_btn"):
-        st.session_state["show_channel_ideas_panel"] = False
-        st.rerun()

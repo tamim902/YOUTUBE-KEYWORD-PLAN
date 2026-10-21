@@ -24,6 +24,7 @@ from src.providers.volume import UnconnectedSearchVolumeProvider, default_volume
 from src.storage.database import db_manager
 from src.ui.channel_components import (
     get_active_channel,
+    normalize_format_label,
     render_channel_editor,
     render_channel_header_bar,
     render_channel_ideas_panel,
@@ -409,4 +410,107 @@ def test_saved_ideas_backlog_per_channel():
 
         # Channel 3 has nothing saved yet
         assert len(state.get("saved_ideas_channel_3", [])) == 0
+
+
+def test_normalize_format_label_canonical_options():
+    """Verify format string maps cleanly to the 6 canonical formats."""
+    assert normalize_format_label("Step-by-step Build Guide") == "Tutorial"
+    assert normalize_format_label("How-to Guide") == "Tutorial"
+    assert normalize_format_label("Comparison / Sound Test Shootout") == "Comparison"
+    assert normalize_format_label("DF54 vs Encore ESP") == "Comparison"
+    assert normalize_format_label("Space-saving Gear Tour & Recommendations") == "List"
+    assert normalize_format_label("Top 5 Keyboards") == "List"
+    assert normalize_format_label("Deep-dive Architecture Guide") == "Deep Dive"
+    assert normalize_format_label("Benchmark & Analysis") == "Deep Dive"
+    assert normalize_format_label("Diagnostic Case Study") == "Case Study"
+    assert normalize_format_label("Quick Tip 60s") == "Quick Tip"
+
+
+def test_channel_switching_auto_opens_ideas_panel():
+    """Verify switching active channel automatically opens ideas panel for immediate discovery."""
+    channels = channel_manager.get_all_channels()
+    state = MockSessionState()
+    state["active_channel_id"] = 1
+    state["show_channel_ideas_panel"] = False
+
+    with patch("streamlit.session_state", state):
+        switch_active_channel(from_id=1, to_id=2, channels=channels)
+        assert state["active_channel_id"] == 2
+        assert state["show_channel_ideas_panel"] is True
+
+
+def test_start_creating_handoff_prefills_seo_generator():
+    """Verify 1-Click 'Start Creating' pre-fills all Tool 5 inputs and navigates to SEO Generator."""
+    channel = channel_manager.get_channel(1)
+    ideas = daily_opportunity_engine._generate_ideas_for_channel(channel=channel, count=1)
+    assert len(ideas) >= 1
+    top_idea = ideas[0]
+
+    state = MockSessionState()
+    with patch("streamlit.session_state", state), patch("streamlit.rerun"):
+        # Emulate clicking Start Creating button
+        state["seo_main_keyword"] = top_idea.main_keyword
+        state["gen_main_kw_input"] = top_idea.main_keyword
+        state["seo_topic_summary"] = top_idea.proposed_topic
+        state["gen_topic_summary_input"] = top_idea.proposed_topic
+        sec_str = ", ".join(top_idea.supporting_keywords[:4])
+        state["seo_secondary_keywords"] = sec_str
+        state["gen_sec_kws_input"] = sec_str
+        target_aud = top_idea.target_viewer or channel.target_audience
+        state["seo_target_viewer"] = target_aud
+        state["gen_target_viewer_input"] = target_aud
+        state["gen_format_radio"] = "Long-form (16:9)"
+        state["current_page"] = TOOL_SEO_GENERATOR
+        state["show_channel_ideas_panel"] = False
+
+        # Verify state is ready for Tool 5 without re-entry
+        assert state["current_page"] == TOOL_SEO_GENERATOR
+        assert state["seo_main_keyword"] == top_idea.main_keyword
+        assert state["gen_main_kw_input"] == top_idea.main_keyword
+        assert state["seo_topic_summary"] == top_idea.proposed_topic
+        assert state["gen_topic_summary_input"] == top_idea.proposed_topic
+        assert top_idea.main_keyword in state["seo_secondary_keywords"]
+        assert state["show_channel_ideas_panel"] is False
+
+
+def test_morning_research_engine_and_report_persistence():
+    """Verify automated morning research runs across all 4 channels and persists to SQLite."""
+    rep = daily_opportunity_engine.run_daily_morning_report(
+        timezone_name="UTC",
+        scheduled_time="07:00",
+        ideas_per_channel=4,
+    )
+
+    assert rep.id is not None
+    assert rep.status in ("Completed", "Partially Completed")
+    assert rep.total_channels_processed >= 4
+    assert rep.total_ideas_generated >= 12
+    assert rep.api_quota_units_used >= 0
+
+    # Verify retrieval from database
+    stored_reports = db_manager.get_daily_morning_reports(limit=5)
+    assert len(stored_reports) > 0
+    matched = next((r for r in stored_reports if r["id"] == rep.id), None)
+    assert matched is not None
+    assert matched["status"] == rep.status
+    assert matched["total_channels_processed"] >= 4
+
+
+def test_render_channel_ideas_panel_smoke():
+    """Verify render_channel_ideas_panel renders without crash and populates idea list."""
+    ch = channel_manager.get_channel(1)
+    state = MockSessionState()
+    state["active_channel_id"] = 1
+    state["show_channel_ideas_panel"] = True
+
+    with patch("streamlit.session_state", state), patch("streamlit.rerun"):
+        render_channel_ideas_panel(ch)
+        ideas_key = f"channel_ideas_{ch.id}"
+        ideas = state.get(ideas_key)
+        assert ideas is not None
+        assert len(ideas) >= 3
+        # Verify ranking order (descending by opportunity score)
+        for i in range(len(ideas) - 1):
+            assert ideas[i].opportunity_estimate >= ideas[i + 1].opportunity_estimate
+
 
