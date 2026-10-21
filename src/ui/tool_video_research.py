@@ -250,16 +250,19 @@ def render_video_research_tool() -> None:
                 }
                 order_api = order_map.get(sort_order, "relevance")
 
-                analysis = serp_provider.analyze_keyword(
-                    keyword=clean_kw,
-                    language=selected_lang,
-                    country=selected_country,
-                    max_results=max_vids,
-                    order=order_api,
-                    published_after=published_after_val,
-                    use_cache=use_cache,
-                )
-                st.session_state.current_serp_analysis = analysis
+                try:
+                    analysis = serp_provider.analyze_keyword(
+                        keyword=clean_kw,
+                        language=selected_lang,
+                        country=selected_country,
+                        max_results=max_vids,
+                        order=order_api,
+                        published_after=published_after_val,
+                        use_cache=use_cache,
+                    )
+                    st.session_state.current_serp_analysis = analysis
+                except Exception as exc:
+                    st.error(f"❌ Failed to retrieve YouTube video data: {str(exc)}")
                 st.rerun()
 
     # Results Display

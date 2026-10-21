@@ -156,6 +156,24 @@ def render_settings_tool() -> None:
 
     st.markdown("---")
 
+    # --- Section: Search Volume Provider Status ---
+    st.markdown("### 📊 Search Volume Provider & Data Source Transparency")
+    st.markdown(
+        """
+        <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; 
+                    border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; font-size: 0.88rem; color: #334155;">
+            <b>Status:</b> <code>Unconnected Local Provider (Truthful Mode)</code><br>
+            • <b>Missing Integration / Credentials:</b> No commercial search volume API key configured (e.g. Google Ads Keyword Planner, Keywords Everywhere, or DataForSEO API).<br>
+            • <b>Epistemic Modesty Policy:</b> YouTube Autocomplete does <b>not</b> disclose official monthly search volume numbers. 
+            Keyword Studio strictly refuses to fabricate speculative volume counts or label unverified keywords as "High Volume". 
+            Discovered keywords truthfully show <code>Volume unavailable</code> while providing genuine real-world search suggestions, competitor analysis, and opportunity scores.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+
     # --- Section 2: SQLite Database & Backups ---
     st.markdown("### 💾 Local SQLite Database & Safe Backups")
     st.markdown(
