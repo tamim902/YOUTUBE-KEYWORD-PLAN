@@ -221,10 +221,30 @@ def render_seo_generator_tool() -> None:
             for idx, cand in enumerate(pkg.title_options):
                 c_title_col, c_char_col = st.columns([4, 1])
                 with c_title_col:
-                    st.markdown(f"**Angle {idx+1} ({cand.angle_type.title()}):** `{cand.title}`")
-                    st.caption(f"Promise: {cand.benefit_promise}")
+                    raw_angle = (
+                        getattr(cand, "angle_type", None)
+                        or getattr(cand, "angle", None)
+                        or (cand.get("angle_type") if isinstance(cand, dict) else None)
+                        or (cand.get("angle") if isinstance(cand, dict) else None)
+                        or "Creative Angle"
+                    )
+                    if hasattr(raw_angle, "value"):
+                        raw_angle = raw_angle.value
+                    angle_str = str(raw_angle).replace("_", " ").title()
+
+                    cand_title = getattr(cand, "title", str(cand)) if not isinstance(cand, dict) else cand.get("title", str(cand))
+                    raw_promise = (
+                        getattr(cand, "benefit_promise", None)
+                        or getattr(cand, "length_status", None)
+                        or (cand.get("benefit_promise") if isinstance(cand, dict) else None)
+                        or (cand.get("length_status") if isinstance(cand, dict) else None)
+                        or ""
+                    )
+                    st.markdown(f"**Angle {idx+1} ({angle_str}):** `{cand_title}`")
+                    if raw_promise:
+                        st.caption(f"Strategy: {raw_promise}")
                 with c_char_col:
-                    st.caption(f"{len(cand.title)} chars")
+                    st.caption(f"{len(cand_title)} chars")
 
             pat_titles = st.session_state.get("seo_pattern_titles", [])
             if pat_titles:

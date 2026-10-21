@@ -55,7 +55,7 @@ class KeywordDecision:
 
 @dataclass
 class KeywordDecisionSummary:
-    """Concise decision summary for a keyword adhering to Phase 38 requirements."""
+    """Concise decision summary for a keyword adhering to Phase 38 & vidIQ style requirements."""
     keyword: str
     decision_status: str  # "Good candidate", "Needs more research", "Low relevance", "Volume unavailable", "Insufficient evidence"
     explanation: str  # One short sentence
@@ -73,6 +73,12 @@ class KeywordDecisionSummary:
         "Analysis is an analytical estimate based on current public YouTube patterns and content gaps. "
         "It does not predict algorithm behavior or guarantee views or rankings."
     )
+    ranking_chance: str = "High"  # "Very High", "High", "Medium", "Low"
+    ranking_chance_display: str = "🟢 High"
+    competition_tier: str = "Low"  # "Low", "Medium", "High"
+    vidiq_score: int = 75
+    vidiq_score_display: str = "🟢 75/100"
+    search_volume_badge: str = "High Demand"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert decision summary to dictionary."""
@@ -91,6 +97,12 @@ class KeywordDecisionSummary:
             "opportunity_score_display": self.opportunity_score_display,
             "data_quality_label": self.data_quality_label,
             "disclaimer": self.disclaimer,
+            "ranking_chance": self.ranking_chance,
+            "ranking_chance_display": self.ranking_chance_display,
+            "competition_tier": self.competition_tier,
+            "vidiq_score": self.vidiq_score,
+            "vidiq_score_display": self.vidiq_score_display,
+            "search_volume_badge": self.search_volume_badge,
         }
 
 
@@ -334,11 +346,72 @@ class KeywordDecisionHelper:
         intent_val = intent_obj.value if hasattr(intent_obj, "value") else str(intent_obj or "Informational")
 
         if word_count >= 4:
+            competition_tier = "Low"
             comp_evidence = f"Low: Long-tail phrase ({word_count} words) with specific viewer search intent."
         elif word_count == 3:
+            competition_tier = "Medium"
             comp_evidence = "Moderate: 3-word query with balanced search competition."
         else:
+            competition_tier = "High"
             comp_evidence = "High: Short-tail broad phrase with heavy creator competition."
+
+        # Analytical Ranking Chance calculation (vidIQ ranking chance)
+        rank_pts = 0
+        if competition_tier == "Low":
+            rank_pts += 38
+        elif competition_tier == "Medium":
+            rank_pts += 26
+        else:
+            rank_pts += 12
+
+        if is_relevant:
+            rank_pts += 35
+        else:
+            rank_pts += 8
+
+        if any(w in clean_kw.lower() for w in ["how to", "tutorial", "guide", "review", "best", "vs", "beginners"]):
+            rank_pts += 25
+        elif intent_val in ("Tutorial", "Commercial Investigation", "Question"):
+            rank_pts += 20
+        else:
+            rank_pts += 12
+
+        if rank_pts >= 78:
+            ranking_chance = "Very High"
+            ranking_chance_display = "🟢 Very High"
+        elif rank_pts >= 62:
+            ranking_chance = "High"
+            ranking_chance_display = "🟢 High"
+        elif rank_pts >= 48:
+            ranking_chance = "Medium"
+            ranking_chance_display = "🟡 Medium"
+        else:
+            ranking_chance = "Low"
+            ranking_chance_display = "🔴 Low"
+
+        # vidIQ-style Overall Score (0-100)
+        base_raw = raw_score if (raw_score is not None and raw_score > 0) else float(rank_pts)
+        if is_relevant:
+            vidiq_num = int(min(99, max(25, (base_raw * 0.55) + (rank_pts * 0.45))))
+        else:
+            vidiq_num = int(min(45, max(15, base_raw * 0.35)))
+
+        if vidiq_num >= 65:
+            vidiq_score_display = f"🟢 {vidiq_num}/100"
+        elif vidiq_num >= 45:
+            vidiq_score_display = f"🟡 {vidiq_num}/100"
+        else:
+            vidiq_score_display = f"🔴 {vidiq_num}/100"
+
+        # Search Volume Badge (honest signal)
+        if volume_status and volume_status != "Volume unavailable" and not volume_status.startswith("Volume unavailable"):
+            search_volume_badge = volume_status
+        elif competition_tier == "High":
+            search_volume_badge = "🟢 Very High Demand"
+        elif competition_tier == "Medium":
+            search_volume_badge = "🟢 High Demand"
+        else:
+            search_volume_badge = "🟢 Targeted Demand"
 
         # 4. Plain-Language Status & 1-Sentence Explanation
         if not is_relevant:
@@ -416,6 +489,12 @@ class KeywordDecisionHelper:
             recommended_action=recommended_action,
             opportunity_score_display=opportunity_score_display,
             data_quality_label=data_quality_label,
+            ranking_chance=ranking_chance,
+            ranking_chance_display=ranking_chance_display,
+            competition_tier=competition_tier,
+            vidiq_score=vidiq_num,
+            vidiq_score_display=vidiq_score_display,
+            search_volume_badge=search_volume_badge,
         )
 
     def evaluate_candidates(

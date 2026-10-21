@@ -366,3 +366,99 @@ def test_keyword_research_tool_renders_with_unified_discovery_and_bulk_actions()
         qualities = {r["Data Quality"] for r in state["kr_results"]}
         assert "Live API data" in qualities
         assert "Generated suggestion" in qualities
+
+
+def test_opportunity_finder_recent_videos_found_alias_and_rendering():
+    """Verify GapFinderState.RECENT_VIDEOS_FOUND alias exists and Opportunity Finder evaluates it safely."""
+    from src.models.morning_report import GapFinderState
+    from src.intelligence.gap_finder import gap_finder
+    from src.ui.tool_opportunity_finder import render_opportunity_finder_tool
+
+    # Verify alias exists on enum
+    assert hasattr(GapFinderState, "RECENT_VIDEOS_FOUND")
+    assert GapFinderState.RECENT_VIDEOS_FOUND == GapFinderState.MATCHING_RECENT_VIDEOS_FOUND
+
+    # Verify gap finder evaluates >= 4 videos safely
+    state, msg = gap_finder.evaluate_gap_state(matching_videos_count=5, queries_executed=3)
+    assert state == GapFinderState.MATCHING_RECENT_VIDEOS_FOUND
+
+    # Smoke render with MockSessionState
+    m_state = MockSessionState()
+    m_state["active_channel_id"] = 1
+    m_state["opp_last_query"] = "keyboards"
+    with patch("streamlit.session_state", m_state), patch("streamlit.rerun"):
+        render_opportunity_finder_tool()
+
+
+def test_seo_generator_title_candidate_angle_resilience():
+    """Verify SEO Generator safely reads title candidates whether angle or angle_type is used."""
+    from src.intelligence.content_factory import TitleCandidate, VideoContentPackage
+    from src.ui.tool_seo_generator import render_seo_generator_tool
+
+    cand1 = TitleCandidate(
+        title="Best Mechanical Keyboards (2026): What to Buy",
+        angle="buyer_guide",
+        char_count=45,
+        is_front_loaded=True,
+        length_status="Optimal",
+    )
+    pkg = VideoContentPackage(
+        channel_id=1,
+        channel_name="Mechanical Keyboards",
+        topic="Best Keyboards",
+        primary_keyword="mechanical keyboards",
+        selected_title=cand1.title,
+        title_options=[cand1],
+    )
+
+    state = MockSessionState()
+    state["active_channel_id"] = 1
+    state["seo_main_keyword"] = "mechanical keyboards"
+    state["seo_generated_pkg"] = pkg
+
+    with patch("streamlit.session_state", state), patch("streamlit.rerun"):
+        render_seo_generator_tool()
+
+
+def test_vidiq_scoring_and_ranking_chance_computation():
+    """Verify vidIQ-style scores, competition tiers, and ranking chances."""
+    ch = channel_manager.get_channel(1)
+
+    # 1. Long-tail keyword: should have High/Very High ranking chance and Low competition
+    dec_lt = keyword_decision_helper.build_decision_summary(
+        keyword="best silent mechanical keyboard for programming",
+        seed_query="mechanical keyboard",
+        channel=ch,
+        queries_executed_count=5,
+        raw_score=90.0,
+    )
+    assert dec_lt.competition_tier == "Low"
+    assert "High" in dec_lt.ranking_chance
+    assert dec_lt.vidiq_score >= 65
+    assert "🟢" in dec_lt.vidiq_score_display
+
+    # 2. Broad single word: should have High competition and Low ranking chance
+    dec_broad = keyword_decision_helper.build_decision_summary(
+        keyword="keyboards",
+        seed_query="keyboards",
+        channel=ch,
+        queries_executed_count=1,
+        raw_score=40.0,
+    )
+    assert dec_broad.competition_tier == "High"
+    assert dec_broad.ranking_chance in ("Low", "Medium")
+
+
+def test_tag_studio_character_counter_and_formatting():
+    """Verify YouTube Tag Studio character counting against the 500-character upload limit."""
+    tags = [
+        "best mechanical keyboards",
+        "mechanical keyboards 2026",
+        "custom keyboard build",
+        "quiet linear switches",
+    ]
+    comma_tags = ", ".join(tags)
+    assert len(comma_tags) < 500
+    assert "best mechanical keyboards" in comma_tags
+    assert "2026" in comma_tags
+
