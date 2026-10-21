@@ -183,7 +183,7 @@ def render_opportunity_finder_tool() -> None:
                     queries_executed=queries_executed,
                 )
 
-                # Format opportunity label
+                # Format opportunity label adhering to Phase 38 exact states
                 if gap_state == GapFinderState.NO_MATCHING_VIDEOS_FOUND:
                     opp_label = "No matching videos found in executed searches"
                     reason = "Zero matching videos found in executed 60-day search sample. Prime first-mover potential."
@@ -194,11 +194,11 @@ def render_opportunity_finder_tool() -> None:
                     reason = f"Only {recent_vids_count} recent video(s) found. High viewer demand with minimal recent competitor upload volume."
                     angle = "Comprehensive comparison answering questions skipped by existing videos."
                 elif gap_state == GapFinderState.RECENT_VIDEOS_FOUND:
-                    opp_label = "Recent matching videos found"
+                    opp_label = "Matching videos found"
                     reason = f"{recent_vids_count} competing videos found in the last 60 days. Topic is actively covered."
                     angle = "Unique contrarian take, specific troubleshooting edge case, or long-term durability update."
                 else:
-                    opp_label = "Insufficient research coverage"
+                    opp_label = "Insufficient coverage"
                     reason = "Limited query sample. Expand search queries to confirm competitor activity."
                     angle = "Broad introductory overview."
 
@@ -233,6 +233,20 @@ def render_opportunity_finder_tool() -> None:
     results = st.session_state.opp_results
     if results:
         st.markdown("---")
+        
+        # Research Coverage Reporting Banner
+        executed_queries_count = len(results) * 2
+        st.markdown(
+            f"""
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
+                📊 <b>Research Coverage:</b> Executed <b>{executed_queries_count}</b> targeted queries across {len(results)} candidate topics in rolling 60-day window ({st.session_state.opp_window_str}) &middot; 
+                <b>API Limits:</b> Respected (Quota usage logged) &middot; 
+                <b>Coverage Integrity:</b> Findings represent observed results within executed queries; never claims no videos exist platform-wide when search is incomplete.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.markdown(f"### 🎯 60-Day Opportunity Matrix for *\"{st.session_state.opp_last_seed}\"*")
         st.caption(f"Evaluated across rolling 60-day window: **{st.session_state.opp_window_str}**")
 

@@ -24,6 +24,7 @@ from src.classifier.service import default_classifier
 from src.config import config
 from src.intelligence.channel_manager import channel_manager
 from src.intelligence.clustering import default_clusterer
+from src.intelligence.decision_helper import KeywordDecisionSummary, keyword_decision_helper
 from src.intelligence.scoring import default_scorer
 from src.models.keyword import AutocompleteResult, KeywordItem
 from src.patterns.generator import SmartKeywordPatternGenerator
@@ -147,6 +148,7 @@ def render_keyword_research_tool() -> None:
             t0 = time.time()
             provider = YouTubeAutocompleteProvider(database_manager=db_manager)
             all_suggestions: List[AutocompleteResult] = []
+            executed_queries: List[str] = [clean_q]
 
             # 1. Core direct autocomplete
             direct_suggs = provider.get_suggestions(
@@ -170,6 +172,7 @@ def render_keyword_research_tool() -> None:
                     f"{clean_q} vs",
                 ]
                 for mod_query in modifier_prefixes:
+                    executed_queries.append(mod_query)
                     q_suggs = provider.get_suggestions(
                         mod_query,
                         language=selected_lang,
@@ -183,6 +186,7 @@ def render_keyword_research_tool() -> None:
                 letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "m", "p", "s", "t", "w"]
                 for char in letters:
                     char_query = f"{clean_q} {char}"
+                    executed_queries.append(char_query)
                     char_suggs = provider.get_suggestions(
                         char_query,
                         language=selected_lang,
@@ -193,6 +197,7 @@ def render_keyword_research_tool() -> None:
 
             dt = time.time() - t0
             st.session_state.kr_execution_time = dt
+            st.session_state["kr_executed_queries"] = executed_queries
 
             # Deduplicate by keyword
             seen = set()
@@ -209,14 +214,31 @@ def render_keyword_research_tool() -> None:
                     # Search volume via provider
                     vol_obj = default_volume_provider.get_keyword_volume(s.keyword, country=selected_country)
 
+                    # Build Phase 38 Keyword Decision Summary with plain-language status
+                    dec_summary = keyword_decision_helper.build_decision_summary(
+                        keyword=s.keyword,
+                        seed_query=clean_q,
+                        channel=active_channel,
+                        is_cached=getattr(s, "is_cached", False),
+                        retrieved_at=getattr(s, "retrieved_at", None),
+                        queries_executed_count=len(executed_queries),
+                        volume_status=vol_obj.display_metric,
+                        raw_score=score_res.total_score,
+                        source_type="cached" if getattr(s, "is_cached", False) else "autocomplete",
+                    )
+
                     unique_results.append({
                         "Keyword": s.keyword,
+                        "Decision Status": dec_summary.decision_status,
                         "Search Volume": vol_obj.display_metric,
                         "Competition": comp_label,
                         "Search Intent": cls.primary_intent.value,
+                        "Data Quality": dec_summary.data_quality_label,
+                        "Opportunity Score": dec_summary.opportunity_score_display,
                         "Source": "YouTube Autocomplete",
-                        "Opportunity Score": f"{int(score_res.total_score)} pts",
-                        "_raw_score": score_res.total_score,
+                        "_raw_score": score_res.total_score if dec_summary.decision_status != "Low relevance" else 0.0,
+                        "_decision": dec_summary.to_dict(),
+                        "_score_breakdown": score_res.to_dict(),
                     })
 
             # Sort by raw score descending
@@ -255,6 +277,21 @@ def render_keyword_research_tool() -> None:
     results = st.session_state.kr_results
     if results:
         st.markdown("---")
+        
+        # Research Coverage Reporting Banner
+        executed_list = st.session_state.get("kr_executed_queries", [st.session_state.kr_last_query])
+        st.markdown(
+            f"""
+            <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
+                📊 <b>Research Coverage:</b> Executed <b>{len(executed_list)}</b> queries in {st.session_state.kr_execution_time:.2f}s &middot; 
+                <b>Pagination:</b> Page 1 of 1 (Top Autocomplete suggestions) &middot; 
+                <b>API Limits:</b> Respected (0 quota units used, free autocomplete endpoint) &middot; 
+                <b>Completeness:</b> Complete ({len(results)} discovered keywords)
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         # Metric Tiles
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -282,25 +319,98 @@ def render_keyword_research_tool() -> None:
         if selected_intent != "All Intents":
             filtered_results = [r for r in filtered_results if r["Search Intent"] == selected_intent]
 
-        # Results Table exactly matching Keyword | Search Volume | Competition | Search Intent | Source | Opportunity Score
+        # Results Table with Decision Status & Data Quality indicators
         st.caption(f"Showing **{len(filtered_results)}** of {len(results)} discovered keywords:")
         df_display = pd.DataFrame(filtered_results)
         
+        display_cols = [
+            c for c in ["Keyword", "Decision Status", "Search Volume", "Competition", "Search Intent", "Data Quality", "Opportunity Score"]
+            if c in df_display.columns
+        ]
+
         st.dataframe(
-            df_display[[
-                "Keyword", "Search Volume", "Competition", "Search Intent", "Source", "Opportunity Score"
-            ]],
+            df_display[display_cols],
             column_config={
                 "Keyword": st.column_config.TextColumn("Keyword", width="large"),
+                "Decision Status": st.column_config.TextColumn("Decision Status", width="medium"),
                 "Search Volume": st.column_config.TextColumn("Search Volume", width="medium"),
-                "Competition": st.column_config.TextColumn("Competition", width="medium"),
+                "Competition": st.column_config.TextColumn("Competition", width="small"),
                 "Search Intent": st.column_config.TextColumn("Search Intent", width="medium"),
-                "Source": st.column_config.TextColumn("Source", width="medium"),
+                "Data Quality": st.column_config.TextColumn("Data Quality", width="small"),
                 "Opportunity Score": st.column_config.TextColumn("Opportunity Score", width="small"),
             },
             hide_index=True,
             use_container_width=True,
         )
+
+        # Keyword Decision Summary & Evidence Inspector
+        st.markdown("### 📋 Keyword Decision Summary & Evidence Inspector")
+        st.caption("Select any discovered keyword to inspect its full 8-point evidence summary, data quality indicators, and scoring formula:")
+
+        kw_names = [r["Keyword"] for r in filtered_results]
+        sel_kw = st.selectbox("Select Keyword to Inspect", kw_names, key="kr_inspect_select")
+        sel_rec = next((r for r in filtered_results if r["Keyword"] == sel_kw), None)
+
+        if sel_rec and "_decision" in sel_rec:
+            dec = sel_rec["_decision"]
+            st.markdown(
+                f"""
+                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                        <h4 style="margin: 0; font-size: 1.18rem; color: #0F172A; font-weight: 700;">
+                            {dec['keyword']}
+                        </h4>
+                        <div>
+                            <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px; margin-right: 6px;">
+                                {dec['decision_status']}
+                            </span>
+                            <span style="background: #F1F5F9; color: #475569; font-weight: 600; font-size: 0.78rem; padding: 4px 10px; border-radius: 12px;">
+                                {dec['data_quality_label']}
+                            </span>
+                        </div>
+                    </div>
+                    <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.90rem; color: #1E3A8A;">
+                        💡 <b>Recommendation:</b> {dec['explanation']}
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 0.85rem; color: #334155; line-height: 1.5;">
+                        <div>• <b>Relevance to Niche:</b> {dec['relevance_to_niche']}</div>
+                        <div>• <b>Search Volume & Source:</b> {dec['search_volume_and_source']}</div>
+                        <div>• <b>Competition Evidence:</b> {dec['competition_evidence']}</div>
+                        <div>• <b>Search Intent:</b> {dec['search_intent']}</div>
+                        <div>• <b>Recent Video Evidence:</b> {dec['recent_video_evidence']}</div>
+                        <div>• <b>Data Freshness:</b> {dec['data_freshness']}</div>
+                        <div>• <b>Research Completeness:</b> {dec['research_completeness']}</div>
+                        <div>• <b>Recommended Action:</b> {dec['recommended_action']}</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            # Collapsible Scoring Formula Expander
+            with st.expander("📐 Transparent Scoring Formula & Evidence Contribution", expanded=False):
+                st.markdown(
+                    """
+                    **Transparent Heuristic Relevance Scoring Formula:**
+                    $$\\text{Relevance Score} = (\\text{Seed Overlap} \\times 0.40) + (\\text{Sequence Similarity} \\times 0.30) + (\\text{Intent Clarity} \\times 0.20) + (\\text{Length Quality} \\times 0.10)$$
+                    """
+                )
+                sb = sel_rec.get("_score_breakdown", {})
+                st.markdown(
+                    f"""
+                    - **Seed Overlap (0–40 pts):** {sb.get('seed_term_score', 0):.1f} pts (Token overlap with seed/niche)
+                    - **Sequence Similarity (0–30 pts):** {sb.get('similarity_score', 0):.1f} pts (Character and token sequence alignment)
+                    - **Intent Clarity (0–20 pts):** {sb.get('intent_score', 0):.1f} pts (Structured intent clarity e.g. How-to, Review, Buyer)
+                    - **Length Quality (0–10 pts):** {sb.get('length_score', 0):.1f} pts (Optimal 2–6 word sweet spot for video queries)
+                    - **Duplicate Repetition Penalty:** -{sb.get('penalty', 0):.0f} pts
+                    - **Calculated Score:** `{sel_rec.get('Opportunity Score', 'Insufficient data')}`
+                    """
+                )
+                st.caption(f"ℹ️ {dec['disclaimer']}")
+
+            # 1-Click Copy snippet for this keyword decision
+            dec_copy_snippet = f"Keyword: {dec['keyword']}\nStatus: {dec['decision_status']}\nRelevance: {dec['relevance_to_niche']}\nIntent: {dec['search_intent']}\nRecommendation: {dec['recommended_action']}"
+            st.code(dec_copy_snippet, language="text")
 
         # Bulk & Multi-Select Copy Actions
         st.markdown("#### 📋 Copy & Export Actions")

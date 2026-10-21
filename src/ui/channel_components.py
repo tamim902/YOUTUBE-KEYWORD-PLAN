@@ -368,12 +368,21 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
         unsafe_allow_html=True,
     )
 
-    # Fetch / Generate Tailored Ideas
+    # Fetch / Generate Tailored Ideas (Excluding saved backlog to prevent duplicates)
+    saved_list = st.session_state.get(f"saved_ideas_channel_{profile.id}", [])
+    saved_topics = {s.get("topic", "").lower().strip() for s in saved_list if isinstance(s, dict) and s.get("topic")}
+    saved_kws = {s.get("keyword", "").lower().strip() for s in saved_list if isinstance(s, dict) and s.get("keyword")}
+    excluded_existing = saved_topics.union(saved_kws).union({t.lower().strip() for t in profile.existing_video_topics})
+
     ideas_key = f"channel_ideas_{profile.id}"
     ideas = st.session_state.get(ideas_key)
     if not ideas:
         with st.spinner(f"Analyzing YouTube search patterns and 60-day competitor gaps for '{profile.channel_name}'..."):
-            ideas = daily_opportunity_engine._generate_ideas_for_channel(channel=profile, count=5)
+            ideas = daily_opportunity_engine._generate_ideas_for_channel(
+                channel=profile,
+                count=5,
+                existing_topics=set(excluded_existing),
+            )
             # Rank ideas by transparent, explainable opportunity score descending
             ideas = sorted(ideas, key=lambda x: getattr(x, "opportunity_estimate", 0), reverse=True)
             st.session_state[ideas_key] = ideas
@@ -501,8 +510,10 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
             for s_idx, s_item in enumerate(saved_list):
                 c_s1, c_s2 = st.columns([4, 1.5])
                 with c_s1:
-                    st.markdown(f"**#{s_idx+1}: {s_item['topic']}**")
-                    st.caption(f"Keyword: `{s_item['keyword']}` &middot; Title: `{s_item['title']}` &middot; Saved: {s_item['saved_at']}")
+                    st.markdown(f"**#{s_idx+1}: {s_item.get('topic', 'Video Idea')}**")
+                    t_str = s_item.get('title') or s_item.get('topic') or 'Draft Title'
+                    d_str = s_item.get('saved_at', 'Saved in backlog')
+                    st.caption(f"Keyword: `{s_item.get('keyword', '')}` &middot; Title: `{t_str}` &middot; Saved: {d_str}")
                 with c_s2:
                     if st.button(f"🚀 Create", key=f"create_saved_{profile.id}_{s_idx}", use_container_width=True):
                         st.session_state["seo_main_keyword"] = s_item["keyword"]

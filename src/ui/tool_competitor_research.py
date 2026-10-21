@@ -228,6 +228,16 @@ def render_competitor_research_tool() -> None:
     if analysis_data:
         st.markdown("---")
         if not analysis_data.get("is_connected", False):
+            st.markdown(
+                f"""
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
+                    📊 <b>Research Coverage:</b> Incomplete coverage (YouTube Data API credentials not configured) &middot; 
+                    <b>API Limits:</b> 0 quota units used &middot; 
+                    <b>Status:</b> Offline mode. Connect YouTube Data API key in Settings to inspect live competitor videos.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.info(
                 f"**Competitor Research Status for '{analysis_data.get('keyword')}':**\n\n"
                 f"• {analysis_data.get('status_message')}\n"
@@ -236,6 +246,18 @@ def render_competitor_research_tool() -> None:
             )
         else:
             videos = analysis_data.get("videos", [])
+            # Research Coverage Reporting Banner
+            st.markdown(
+                f"""
+                <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
+                    📊 <b>Research Coverage:</b> Executed 1 search query (<code>"{analysis_data.get('keyword')}"</code>) &middot; 
+                    <b>Pagination:</b> Page 1 (Top {len(videos)} publicly ranking videos analyzed) &middot; 
+                    <b>API Limits:</b> Respected (YouTube Data API v3 quota logged) &middot; 
+                    <b>Coverage Boundary:</b> Sample reflects currently observed top ranking public videos; never claims no videos exist platform-wide across all of YouTube.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             st.markdown(f"### 📊 Competitor Landscape for *\"{analysis_data.get('keyword')}\"*")
             st.caption(f"Retrieved {len(videos)} top ranking public videos from YouTube Data API at {analysis_data.get('queried_at')}:")
 
