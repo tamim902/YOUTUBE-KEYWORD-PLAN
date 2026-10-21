@@ -31,6 +31,61 @@ def get_active_channel() -> ChannelProfile:
     return profile
 
 
+def switch_active_channel(from_id: int, to_id: int, channels: List[ChannelProfile]) -> None:
+    """Safely switch active channel with complete isolation of research results and queries."""
+    if from_id == to_id:
+        return
+
+    # 1. Snapshot outgoing channel state
+    st.session_state[f"chan_state_{from_id}"] = {
+        "kr_results": list(st.session_state.get("kr_results", [])),
+        "kr_last_query": st.session_state.get("kr_last_query", ""),
+        "kr_patterns": list(st.session_state.get("kr_patterns", [])),
+        "current_serp_analysis": st.session_state.get("current_serp_analysis", None),
+        "vr_last_query": st.session_state.get("vr_last_query", ""),
+        "vr_target_keyword": st.session_state.get("vr_target_keyword", ""),
+        "cr_analysis": st.session_state.get("cr_analysis", None),
+        "cr_last_query": st.session_state.get("cr_last_query", ""),
+        "opp_results": list(st.session_state.get("opp_results", [])),
+        "opp_last_seed": st.session_state.get("opp_last_seed", ""),
+        "seo_generated_pkg": st.session_state.get("seo_generated_pkg", None),
+        "seo_main_keyword": st.session_state.get("seo_main_keyword", ""),
+        "seo_secondary_keywords": st.session_state.get("seo_secondary_keywords", ""),
+        "seo_topic_summary": st.session_state.get("seo_topic_summary", ""),
+        "seo_target_viewer": st.session_state.get("seo_target_viewer", ""),
+    }
+
+    # 2. Update active channel id
+    st.session_state["active_channel_id"] = to_id
+
+    # 3. Find incoming channel profile
+    target_chan = next((c for c in channels if c.id == to_id), None)
+    default_seed = target_chan.channel_niche.split("&")[0].strip() if target_chan else ""
+    target_viewer = target_chan.target_audience if target_chan else "General Audience"
+
+    # 4. Restore incoming channel state or initialize clean isolated state
+    incoming_state = st.session_state.get(f"chan_state_{to_id}")
+    if incoming_state:
+        for k, v in incoming_state.items():
+            st.session_state[k] = v
+    else:
+        st.session_state["kr_results"] = []
+        st.session_state["kr_last_query"] = default_seed
+        st.session_state["kr_patterns"] = []
+        st.session_state["current_serp_analysis"] = None
+        st.session_state["vr_last_query"] = default_seed
+        st.session_state["vr_target_keyword"] = default_seed
+        st.session_state["cr_analysis"] = None
+        st.session_state["cr_last_query"] = default_seed
+        st.session_state["opp_results"] = []
+        st.session_state["opp_last_seed"] = default_seed
+        st.session_state["seo_generated_pkg"] = None
+        st.session_state["seo_main_keyword"] = default_seed
+        st.session_state["seo_secondary_keywords"] = ""
+        st.session_state["seo_topic_summary"] = ""
+        st.session_state["seo_target_viewer"] = target_viewer
+
+
 def render_channel_header_bar() -> ChannelProfile:
     """Render compact 4-channel switcher, active channel badge, and quick actions."""
     channels = channel_manager.get_all_channels()
@@ -68,11 +123,8 @@ def render_channel_header_bar() -> ChannelProfile:
 
         with c_pills[idx]:
             if st.button(label, key=f"hdr_chan_pill_{c_id}", type=btn_type, use_container_width=True):
-                st.session_state["active_channel_id"] = c_id
-                # Automatically sync seed keyword across session
-                st.session_state["kr_last_query"] = chan.channel_niche.split("&")[0].strip()
-                st.session_state["vr_target_keyword"] = chan.channel_niche.split("&")[0].strip()
-                st.session_state["opp_last_seed"] = chan.channel_niche.split("&")[0].strip()
+                if c_id != curr_id:
+                    switch_active_channel(curr_id, c_id, channels)
                 st.rerun()
 
     with c_pills[4]:
@@ -239,8 +291,8 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
                 unsafe_allow_html=True,
             )
 
-            # One-click "Start Creating" action button
-            col_act1, col_act2 = st.columns([2, 4])
+            # One-click actions: "Start Creating" & "Save Idea"
+            col_act1, col_act2 = st.columns([2, 1.8])
             with col_act1:
                 if st.button(f"🚀 Start Creating Idea #{idx+1}", type="primary", use_container_width=True, key=f"start_creating_btn_{profile.id}_{idx}"):
                     # Transfer idea directly to Tool 5 (SEO Generator)
@@ -251,6 +303,43 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
                     st.session_state["current_page"] = TOOL_SEO_GENERATOR
                     st.session_state["show_channel_ideas_panel"] = False
                     st.rerun()
+            with col_act2:
+                saved_key = f"saved_ideas_channel_{profile.id}"
+                if saved_key not in st.session_state:
+                    st.session_state[saved_key] = []
+                is_saved = any(s.get("topic") == idea.proposed_topic for s in st.session_state[saved_key])
+                if not is_saved:
+                    if st.button(f"💾 Save Idea #{idx+1}", use_container_width=True, key=f"save_idea_btn_{profile.id}_{idx}"):
+                        st.session_state[saved_key].append({
+                            "topic": idea.proposed_topic,
+                            "keyword": idea.main_keyword,
+                            "format": idea.suggested_video_format,
+                            "title": idea.seo_focused_title_options[0] if idea.seo_focused_title_options else idea.proposed_topic,
+                            "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                        })
+                        st.success("✅ Saved to channel ideas!")
+                        st.rerun()
+                else:
+                    st.markdown("<div style='font-size: 0.85rem; color: #15803D; padding-top: 6px;'>⭐ Saved in Backlog</div>", unsafe_allow_html=True)
+
+    # Show Channel's Saved Ideas Backlog if any
+    saved_list = st.session_state.get(f"saved_ideas_channel_{profile.id}", [])
+    if saved_list:
+        with st.expander(f"📁 Saved Video Ideas for {profile.channel_name} ({len(saved_list)})", expanded=False):
+            for s_idx, s_item in enumerate(saved_list):
+                c_s1, c_s2 = st.columns([4, 1.5])
+                with c_s1:
+                    st.markdown(f"**#{s_idx+1}: {s_item['topic']}**")
+                    st.caption(f"Keyword: `{s_item['keyword']}` &middot; Title: `{s_item['title']}` &middot; Saved: {s_item['saved_at']}")
+                with c_s2:
+                    if st.button(f"🚀 Create", key=f"create_saved_{profile.id}_{s_idx}", use_container_width=True):
+                        st.session_state["seo_main_keyword"] = s_item["keyword"]
+                        st.session_state["seo_topic_summary"] = s_item["topic"]
+                        st.session_state["seo_secondary_keywords"] = s_item["keyword"]
+                        st.session_state["seo_target_viewer"] = profile.target_audience
+                        st.session_state["current_page"] = TOOL_SEO_GENERATOR
+                        st.session_state["show_channel_ideas_panel"] = False
+                        st.rerun()
 
     if st.button("✕ Close Ideas Panel", key="close_ideas_panel_btn"):
         st.session_state["show_channel_ideas_panel"] = False

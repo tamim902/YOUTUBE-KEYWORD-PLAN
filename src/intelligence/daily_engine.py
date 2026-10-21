@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import random
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.intelligence.channel_manager import ChannelManager, channel_manager
@@ -375,18 +376,33 @@ class DailyOpportunityEngine:
         covered_in_channel = {t.lower().strip() for t in channel.existing_video_topics}
         start_dt, end_dt, window_str = self.gap_finder.get_rolling_window()
 
-        # Find matching seed topic pool based on niche or sub-niches
+        # Find matching seed topic pool based on niche or sub-niches (bidirectional & token match)
         pool = []
+        cn_lower = channel.channel_niche.lower()
+        cn_tokens = set(re.findall(r"\w+", cn_lower)) - {"and", "for", "the", "in", "with", "setups", "setup", "equipment", "technology"}
+
         for niche_key, topics in NICHE_SEED_TOPICS.items():
-            if niche_key.lower() in channel.channel_niche.lower() or any(
-                sub.lower() in niche_key.lower() for sub in channel.sub_niches
-            ):
+            nk_lower = niche_key.lower()
+            nk_tokens = set(re.findall(r"\w+", nk_lower)) - {"and", "for", "the", "in", "with", "setups", "setup", "equipment", "technology"}
+            
+            # 1. Bidirectional substring match
+            if cn_lower in nk_lower or nk_lower in cn_lower:
+                pool.extend(topics)
+                break
+            # 2. Token overlap match (e.g. 'keyboard', 'python', 'espresso', 'gym')
+            if cn_tokens and (cn_tokens & nk_tokens):
+                pool.extend(topics)
+                break
+            # 3. Sub-niche match
+            if any(sub.lower() in nk_lower or nk_lower in sub.lower() for sub in channel.sub_niches):
                 pool.extend(topics)
                 break
 
         if not pool:
-            # Fallback to the first available pool or generic tech
-            pool = list(NICHE_SEED_TOPICS.values())[(channel.id or 1) % len(NICHE_SEED_TOPICS)]
+            # Deterministic index-aligned fallback (Ch 1 -> idx 0, Ch 2 -> idx 1, etc.)
+            pool_keys = list(NICHE_SEED_TOPICS.keys())
+            idx = ((channel.id or 1) - 1) % len(pool_keys)
+            pool = list(NICHE_SEED_TOPICS[pool_keys[idx]])
 
         ideas: List[DailyIdeaItem] = []
         # Pass 1: Core pool topics

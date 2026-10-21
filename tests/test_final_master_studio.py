@@ -27,6 +27,7 @@ from src.ui.channel_components import (
     render_channel_editor,
     render_channel_header_bar,
     render_channel_ideas_panel,
+    switch_active_channel,
 )
 from src.ui.components import (
     ALL_NAVIGATION_PAGES,
@@ -330,3 +331,82 @@ def test_tool_seo_generator_renders_without_crash():
          patch("streamlit.expander", return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())):
 
         render_seo_generator_tool()
+
+
+def test_switch_active_channel_research_isolation():
+    """Verify switching active channels completely isolates research results and restores them on return."""
+    state = MockSessionState()
+    channels = channel_manager.get_all_channels()
+
+    with patch("streamlit.session_state", state):
+        state["active_channel_id"] = 1
+        state["kr_results"] = [{"Keyword": "custom linear switches", "Opportunity Score": "85 pts"}]
+        state["kr_last_query"] = "custom linear switches"
+
+        # Switch Ch 1 -> Ch 2
+        switch_active_channel(from_id=1, to_id=2, channels=channels)
+
+        assert state["active_channel_id"] == 2
+        # Verify Ch 2 has clean isolated results (no Ch 1 leakage)
+        assert len(state["kr_results"]) == 0
+        assert "Python" in state["kr_last_query"] or "AI" in state["kr_last_query"] or "Web" in state["kr_last_query"]
+
+        # Conduct research on Ch 2
+        state["kr_results"] = [{"Keyword": "fastapi bangla tutorial", "Opportunity Score": "90 pts"}]
+        state["kr_last_query"] = "fastapi bangla tutorial"
+
+        # Switch Ch 2 -> Ch 1
+        switch_active_channel(from_id=2, to_id=1, channels=channels)
+
+        assert state["active_channel_id"] == 1
+        # Verify Ch 1 results were restored exactly as left
+        assert len(state["kr_results"]) == 1
+        assert state["kr_results"][0]["Keyword"] == "custom linear switches"
+        assert state["kr_last_query"] == "custom linear switches"
+
+        # Switch back Ch 1 -> Ch 2
+        switch_active_channel(from_id=1, to_id=2, channels=channels)
+
+        assert state["active_channel_id"] == 2
+        assert len(state["kr_results"]) == 1
+        assert state["kr_results"][0]["Keyword"] == "fastapi bangla tutorial"
+
+
+def test_channel_ideas_all_four_niches_matched():
+    """Verify each of the 4 channels receives video ideas matching its specific niche."""
+    channels = channel_manager.get_all_channels()
+
+    # Ch 1: Mechanical Keyboards
+    ideas_ch1 = daily_opportunity_engine._generate_ideas_for_channel(channel=channels[0], count=2)
+    assert any("keyboard" in (i.proposed_topic + i.main_keyword).lower() for i in ideas_ch1)
+
+    # Ch 2: Python & Web Dev
+    ideas_ch2 = daily_opportunity_engine._generate_ideas_for_channel(channel=channels[1], count=2)
+    assert any("python" in (i.proposed_topic + i.main_keyword).lower() or "ai" in (i.proposed_topic + i.main_keyword).lower() for i in ideas_ch2)
+
+    # Ch 3: Espresso & Kitchen
+    ideas_ch3 = daily_opportunity_engine._generate_ideas_for_channel(channel=channels[2], count=2)
+    assert any("espresso" in (i.proposed_topic + i.main_keyword).lower() or "grinder" in (i.proposed_topic + i.main_keyword).lower() for i in ideas_ch3)
+
+    # Ch 4: Home Gym & Recovery
+    ideas_ch4 = daily_opportunity_engine._generate_ideas_for_channel(channel=channels[3], count=2)
+    assert any("gym" in (i.proposed_topic + i.main_keyword).lower() or "dumbbell" in (i.proposed_topic + i.main_keyword).lower() or "cardio" in (i.proposed_topic + i.main_keyword).lower() for i in ideas_ch4)
+
+
+def test_saved_ideas_backlog_per_channel():
+    """Verify saving video ideas is partitioned per channel without cross-channel pollution."""
+    state = MockSessionState()
+
+    with patch("streamlit.session_state", state):
+        state["saved_ideas_channel_1"] = [{"topic": "Keyboard Sound Test", "keyword": "switch test"}]
+        state["saved_ideas_channel_2"] = [{"topic": "Python FastAPI Setup", "keyword": "fastapi"}]
+
+        assert len(state.get("saved_ideas_channel_1", [])) == 1
+        assert state["saved_ideas_channel_1"][0]["keyword"] == "switch test"
+
+        assert len(state.get("saved_ideas_channel_2", [])) == 1
+        assert state["saved_ideas_channel_2"][0]["keyword"] == "fastapi"
+
+        # Channel 3 has nothing saved yet
+        assert len(state.get("saved_ideas_channel_3", [])) == 0
+

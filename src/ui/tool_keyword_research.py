@@ -309,7 +309,7 @@ def render_keyword_research_tool() -> None:
         with c_cp1:
             all_kw_text = "\n".join(r["Keyword"] for r in filtered_results)
             st.download_button(
-                label=f"📋 Copy All ({len(filtered_results)})",
+                label=f"📋 Download All ({len(filtered_results)})",
                 data=all_kw_text,
                 file_name=f"all_keywords_{st.session_state.kr_last_query.replace(' ', '_')}.txt",
                 mime="text/plain",
@@ -333,13 +333,16 @@ def render_keyword_research_tool() -> None:
 
         with c_cp3:
             # Multi-keyword selection to copy together
-            with st.popover("Select Keywords to Copy"):
+            with st.popover("📋 1-Click Copy"):
+                st.caption("1-Click Copy Selected or All Keywords:")
+                with st.expander("Copy All Keywords", expanded=False):
+                    st.code(all_kw_text, language=None)
                 kw_options = [r["Keyword"] for r in filtered_results]
-                selected_multi = st.multiselect("Pick keywords to copy together:", options=kw_options, key="kr_multi_select")
+                selected_multi = st.multiselect("Pick specific keywords to copy:", options=kw_options, key="kr_multi_select")
                 if selected_multi:
                     multi_text = "\n".join(selected_multi)
-                    st.text_area("Copied String (Ctrl+C)", value=multi_text, height=120)
-                    st.success(f"✅ {len(selected_multi)} keywords selected for copy!")
+                    st.code(multi_text, language=None)
+                    st.success(f"✅ {len(selected_multi)} keywords ready to copy above!")
 
         with c_cp4:
             if st.button("🔄 Retry Research", use_container_width=True, key="kr_retry_btn"):

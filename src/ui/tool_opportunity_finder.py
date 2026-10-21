@@ -287,6 +287,9 @@ def render_opportunity_finder_tool() -> None:
 
         # Action Buttons
         st.markdown("#### 🛠️ Opportunity Actions & Cross-Tool Handoffs")
+        with st.expander("📋 View & 1-Click Copy All Opportunities", expanded=False):
+            opps_text = "\n".join(f"- {r['Candidate Keyword']} ({r['Opportunity Status']})" for r in results)
+            st.code(opps_text, language=None)
         c_act1, c_act2, c_act3 = st.columns([1.5, 1.5, 1.5])
 
         with c_act1:

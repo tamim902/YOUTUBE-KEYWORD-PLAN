@@ -317,6 +317,7 @@ def render_seo_generator_tool() -> None:
         full_package_text = (
             f"=== YOUTUBE VIDEO SEO PACKAGE ===\n\n"
             f"PRIMARY TITLE:\n{best_title}\n\n"
+            f"THUMBNAIL HOOK:\n{thumb_hook}\n\n"
             f"ALTERNATIVE TITLES:\n" + "\n".join(f"- {t.title}" for t in pkg.title_options) + "\n\n"
             f"VIDEO DESCRIPTION:\n{desc_text}\n\n"
             f"TAGS:\n{tags_str}\n\n"
