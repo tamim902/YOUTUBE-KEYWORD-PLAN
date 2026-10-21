@@ -320,6 +320,47 @@ def render_video_research_tool() -> None:
                 p_badges = " ".join([f"`{kw}`" for kw in tag_names])
                 st.markdown(f"Top tags observed across ranking videos: {p_badges}")
 
+            # Qualitative Video SERP Intelligence & Title Architecture (Stage 7)
+            with st.expander("📊 Qualitative Video SERP Insights & Title Architecture", expanded=True):
+                n_vids = len(analysis.videos)
+                if n_vids > 0:
+                    tut_count = sum(1 for v in analysis.videos if any(w in v.title.lower() for w in ["how to", "tutorial", "guide", "step by step"]))
+                    rev_count = sum(1 for v in analysis.videos if any(w in v.title.lower() for w in ["best", "top", "review", "worth it"]))
+                    vs_count = sum(1 for v in analysis.videos if " vs" in v.title.lower() or "versus" in v.title.lower())
+                    yr_count = sum(1 for v in analysis.videos if any(y in v.title for y in ["2026", "2025", "2024"]))
+                    
+                    recent_vids = sum(1 for v in analysis.videos if v.relative_age and ("day" in v.relative_age.lower() or "week" in v.relative_age.lower()))
+                    older_vids = sum(1 for v in analysis.videos if v.relative_age and ("year" in v.relative_age.lower() or any(f"{m} month" in v.relative_age.lower() for m in range(6, 12))))
+                    
+                    c_in1, c_in2, c_in3, c_in4 = st.columns(4)
+                    with c_in1:
+                        st.metric("Review / Best Titles", f"{rev_count}/{n_vids}", help="Videos structured as buyer recommendations or product evaluations.")
+                    with c_in2:
+                        st.metric("Tutorial / How-To", f"{tut_count}/{n_vids}", help="Videos structured as instructive guides or troubleshooting.")
+                    with c_in3:
+                        st.metric("Comparison Titles", f"{vs_count}/{n_vids}", help="Videos featuring head-to-head comparisons.")
+                    with c_in4:
+                        st.metric("Year in Title", f"{yr_count}/{n_vids}", help="Videos targeting current year freshness.")
+
+                    # Content Strategy Insights derived honestly from retrieved sample
+                    insights = []
+                    if older_vids >= n_vids // 2:
+                        insights.append("📅 **Evergreen / Stale SERP:** Over 50% of ranking videos are >6 months old. High potential for an updated 2026 guide to outrank aging results.")
+                    elif recent_vids >= n_vids // 3:
+                        insights.append("⚡ **Active Competitor Velocity:** Multiple competitors uploaded within 30 days. Topic is currently trending.")
+                    
+                    if tut_count == 0:
+                        insights.append("💡 **Content Gap (Tutorial):** Zero tutorial or step-by-step guides in the ranking sample. An actionable 'How-To' video can capture high-intent viewers.")
+                    elif rev_count == 0:
+                        insights.append("💡 **Content Gap (Review):** No dedicated review/comparison videos detected. Opportunity to publish a comprehensive buyer's review.")
+                    
+                    if not insights:
+                        insights.append("⚖️ **Balanced Coverage:** The SERP displays a standard mix of reviews and practical guides.")
+
+                    st.markdown("**Actionable SERP Takeaways:**")
+                    for ins in insights:
+                        st.markdown(f"- {ins}")
+
             st.write("")
             st.markdown("##### 🏆 Ranking Videos Breakdown")
 

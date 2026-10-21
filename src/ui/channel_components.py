@@ -11,6 +11,7 @@ Provides:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import textwrap
 from typing import Any, Dict, List, Optional
 import streamlit as st
 
@@ -20,6 +21,15 @@ from src.models.channel import ChannelProfile, get_default_four_channels
 from src.models.morning_report import DailyIdeaItem, IdeaReviewStatus
 from src.storage.database import db_manager
 from src.ui.components import TOOL_SEO_GENERATOR
+
+
+def _render_html(html_str: str) -> None:
+    """Render HTML cleanly without triggering Markdown indented code block parsing."""
+    dedented = textwrap.dedent(html_str).strip()
+    if hasattr(st, "html"):
+        st.html(dedented)
+    else:
+        st.markdown(dedented, unsafe_allow_html=True)
 
 
 def get_active_channel() -> ChannelProfile:
@@ -406,14 +416,12 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
             # Rank #1 Rationale Callout
             if idx == 0:
                 gap_note = "zero competing videos (high content gap)" if idea.recent_relevant_videos_found == 0 else f"{idea.recent_relevant_videos_found} recent matching videos"
-                st.markdown(
-                    f"""
-                    <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #2563EB; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.88rem; color: #1E3A8A;">
-                        🏆 <b>Ranked #1 Rationale:</b> Grounded in active channel niche (<b>{profile.channel_niche}</b>) with {gap_note} and clear <b>{idea.search_intent}</b> viewer intent in rolling 60-day window.
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                callout_html = f"""
+                <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #2563EB; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.88rem; color: #1E3A8A;">
+                    🏆 <b>Ranked #1 Rationale:</b> Grounded in active channel niche (<b>{profile.channel_niche}</b>) with {gap_note} and clear <b>{idea.search_intent}</b> viewer intent in rolling 60-day window.
+                </div>
+                """
+                _render_html(callout_html)
 
             # Idea Card Box
             suggested_title = idea.seo_focused_title_options[0] if idea.seo_focused_title_options else idea.proposed_topic
@@ -424,35 +432,32 @@ def render_channel_ideas_panel(profile: ChannelProfile) -> None:
             )
             recent_vids_text = "No recent matching videos found (High Content Gap!)" if idea.recent_relevant_videos_found == 0 else f"{idea.recent_relevant_videos_found} recent matching videos found in rolling 60-day window"
 
-            st.markdown(
-                f"""
-                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.78rem; padding: 3px 10px; border-radius: 12px; text-transform: uppercase;">
-                            Rank #{idx+1} &middot; {norm_fmt}
-                        </span>
-                        <div>
-                            {status_badge}
-                        </div>
-                    </div>
-                    <h4 style="margin: 0 0 6px 0; font-size: 1.15rem; color: #0F172A; font-weight: 700;">
-                        {idea.proposed_topic}
-                    </h4>
-                    <div style="font-size: 0.90rem; color: #1E293B; margin-bottom: 8px;">
-                        🎯 <b>Suggested Title:</b> <code>{suggested_title}</code>
-                    </div>
-                    <div style="font-size: 0.85rem; color: #334155; line-height: 1.5; margin-bottom: 10px;">
-                        • <b>Why It Fits Your Channel:</b> Aligned with <b>{profile.channel_niche}</b> for target audience <i>{profile.target_audience}</i>. {idea.why_topic_worth_researching}<br>
-                        • <b>Primary Keyword:</b> <code>{idea.main_keyword}</code> (Search Intent: {idea.search_intent})<br>
-                        • <b>Recent Matching Videos:</b> {recent_vids_text}<br>
-                        • <b>Search Volume Evidence:</b> Volume unavailable - based on autocomplete demand signals (Zero fabrication policy)<br>
-                        • <b>Content Gap Evidence:</b> {idea.why_topic_worth_researching} ({idea.gap_state})<br>
-                        • <b>Suggested Format:</b> {norm_fmt} (Tutorial, Comparison, List, Deep Dive, Case Study, Quick Tip)
+            card_html = f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.78rem; padding: 3px 10px; border-radius: 12px; text-transform: uppercase;">
+                        Rank #{idx+1} &middot; {norm_fmt}
+                    </span>
+                    <div>
+                        {status_badge}
                     </div>
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                <h4 style="margin: 0 0 6px 0; font-size: 1.15rem; color: #0F172A; font-weight: 700;">
+                    {idea.proposed_topic}
+                </h4>
+                <div style="font-size: 0.90rem; color: #1E293B; margin-bottom: 8px;">
+                    🎯 <b>Suggested Title:</b> <code>{suggested_title}</code>
+                </div>
+                <div style="font-size: 0.85rem; color: #334155; line-height: 1.5; margin-bottom: 10px;">
+                    • <b>Why It Fits Your Channel:</b> Aligned with <b>{profile.channel_niche}</b> for target audience <i>{profile.target_audience}</i>.<br>
+                    • <b>Keyword Evidence:</b> Grounded in YouTube search demand for <code>{idea.main_keyword}</code> (Search Intent: {idea.search_intent}).<br>
+                    • <b>Recent Video Evidence:</b> {recent_vids_text}.<br>
+                    • <b>What Remains Unverified:</b> Third-party commercial search volume unconfigured; demand inferred from YouTube autocomplete.<br>
+                    • <b>Why It Is Worth Reviewing:</b> {idea.why_topic_worth_researching} ({idea.gap_state}). Suggested format: {norm_fmt}.
+                </div>
+            </div>
+            """
+            _render_html(card_html)
 
             # 1-Click Copy snippet (Includes Streamlit built-in copy-to-clipboard button)
             copy_snippet = f"Topic: {idea.proposed_topic}\nTitle: {suggested_title}\nPrimary Keyword: {idea.main_keyword}"

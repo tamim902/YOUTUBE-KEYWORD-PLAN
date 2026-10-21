@@ -191,40 +191,51 @@ def render_keyword_research_tool() -> None:
             all_suggestions: List[AutocompleteResult] = []
             executed_queries: List[str] = [clean_q]
 
-            # 1. Core direct autocomplete
+            # 1. Core direct autocomplete (Empirical Seed Query)
             direct_suggs = provider.get_suggestions(
                 clean_q,
                 language=selected_lang,
                 country=selected_country,
                 use_cache=True,
             )
+            for s in direct_suggs:
+                setattr(s, "_category", "Direct Autocomplete")
             all_suggestions.extend(direct_suggs)
 
-            # 2. Space-expanded autocomplete (top immediate completions)
+            # 2. Space-expanded autocomplete (Subsequent-word discovery)
             space_suggs = provider.get_suggestions(
                 f"{clean_q} ",
                 language=selected_lang,
                 country=selected_country,
                 use_cache=True,
             )
+            for s in space_suggs:
+                setattr(s, "_category", "Related & Alphabet")
             all_suggestions.extend(space_suggs)
 
-            # 3. Question, intent & year variations
+            # 3. Question, intent & year variations (with smart de-duplication of existing prefixes)
             if enable_questions:
-                modifier_prefixes = [
-                    f"best {clean_q}",
-                    f"how to {clean_q}",
-                    f"{clean_q} tutorial",
-                    f"{clean_q} review",
-                    f"{clean_q} for beginners",
-                    f"{clean_q} vs",
-                    f"why {clean_q}",
-                    f"{clean_q} 2026",
-                    f"{clean_q} for",
-                    f"{clean_q} with",
-                    f"{clean_q} under",
-                ]
-                for mod_query in modifier_prefixes:
+                raw_mods = []
+                lower_seed = clean_q.lower()
+                if not lower_seed.startswith("best "):
+                    raw_mods.append(f"best {clean_q}")
+                if not lower_seed.startswith("how to "):
+                    raw_mods.append(f"how to {clean_q}")
+                if "tutorial" not in lower_seed:
+                    raw_mods.append(f"{clean_q} tutorial")
+                if "review" not in lower_seed:
+                    raw_mods.append(f"{clean_q} review")
+                if "beginner" not in lower_seed:
+                    raw_mods.append(f"{clean_q} for beginners")
+                if " vs" not in lower_seed:
+                    raw_mods.append(f"{clean_q} vs")
+                if not lower_seed.startswith("why "):
+                    raw_mods.append(f"why {clean_q}")
+                if "2026" not in lower_seed and "2025" not in lower_seed:
+                    raw_mods.append(f"{clean_q} 2026")
+                raw_mods.extend([f"{clean_q} for", f"{clean_q} with", f"{clean_q} under"])
+
+                for mod_query in raw_mods:
                     executed_queries.append(mod_query)
                     q_suggs = provider.get_suggestions(
                         mod_query,
@@ -232,9 +243,11 @@ def render_keyword_research_tool() -> None:
                         country=selected_country,
                         use_cache=True,
                     )
+                    for s in q_suggs[:3]:
+                        setattr(s, "_category", "Questions & Long-Tail")
                     all_suggestions.extend(q_suggs[:3])
 
-            # 4. Alphabet expansion if selected
+            # 4. Alphabet expansion if selected (A-Z drill-down)
             if enable_alphabet:
                 letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "m", "s", "t", "w"]
                 for char in letters:
@@ -246,6 +259,8 @@ def render_keyword_research_tool() -> None:
                         country=selected_country,
                         use_cache=True,
                     )
+                    for s in char_suggs[:2]:
+                        setattr(s, "_category", "Related & Alphabet")
                     all_suggestions.extend(char_suggs[:2])
 
             # 5. Relevant creator keyword patterns across 8 frameworks
@@ -308,25 +323,38 @@ def render_keyword_research_tool() -> None:
                         source_type="cached" if getattr(s, "is_cached", False) else "autocomplete",
                     )
 
-                    # vidIQ-style Competition Badge
+                    # vidIQ-style Competition Badge & Stage 6 Competition Labels
                     if dec_summary.competition_tier == "Low":
-                        comp_badge = "🟢 Low"
+                        comp_badge = "🟢 LOW"
                         comp_label = "Low (Long-tail)"
                     elif dec_summary.competition_tier == "Medium":
-                        comp_badge = "🟡 Medium"
+                        comp_badge = "🟡 MEDIUM"
                         comp_label = "Moderate"
                     else:
-                        comp_badge = "🔴 High"
+                        comp_badge = "🔴 HIGH"
                         comp_label = "High (Broad)"
+
+                    if dec_summary.opportunity_verdict == "STRONGER CANDIDATE":
+                        opp_badge = "🟢 STRONGER CANDIDATE"
+                    elif dec_summary.opportunity_verdict == "MODERATE CANDIDATE":
+                        opp_badge = "🟡 MODERATE CANDIDATE"
+                    elif dec_summary.opportunity_verdict == "INSUFFICIENT EVIDENCE":
+                        opp_badge = "⚪ INSUFFICIENT EVIDENCE"
+                    else:
+                        opp_badge = "🔴 WEAKER CANDIDATE"
+
+                    cat_val = getattr(s, "_category", "Direct Autocomplete")
 
                     unique_results.append({
                         "Keyword": s.keyword,
                         "Tag": f"🏷️ {s.keyword}",
                         "vidIQ Score": dec_summary.vidiq_score_display,
+                        "Opportunity Verdict": opp_badge,
                         "Ranking Chance": dec_summary.ranking_chance_display,
                         "Competition": comp_badge,
                         "Search Volume": dec_summary.search_volume_badge,
                         "Search Intent": cls.primary_intent.value,
+                        "Category": cat_val,
                         "Source": "YouTube Autocomplete",
                         "Data Quality": dec_summary.data_quality_label,
                         "Decision Status": dec_summary.decision_status,
@@ -334,7 +362,10 @@ def render_keyword_research_tool() -> None:
                         "_score_num": dec_summary.vidiq_score,
                         "_ranking_chance": dec_summary.ranking_chance,
                         "_competition_tier": dec_summary.competition_tier,
+                        "_competition_label": dec_summary.competition_label,
+                        "_opportunity_verdict": dec_summary.opportunity_verdict,
                         "_comp_label": comp_label,
+                        "_category": cat_val,
                         "_source_type": "autocomplete",
                         "_raw_score": float(dec_summary.vidiq_score) if dec_summary.decision_status != "Low relevance" else 0.0,
                         "_decision": dec_summary.to_dict(),
@@ -375,23 +406,36 @@ def render_keyword_research_tool() -> None:
                     )
 
                     if dec_summary.competition_tier == "Low":
-                        comp_badge = "🟢 Low"
+                        comp_badge = "🟢 LOW"
                         comp_label = "Low (Long-tail)"
                     elif dec_summary.competition_tier == "Medium":
-                        comp_badge = "🟡 Medium"
+                        comp_badge = "🟡 MEDIUM"
                         comp_label = "Moderate"
                     else:
-                        comp_badge = "🔴 High"
+                        comp_badge = "🔴 HIGH"
                         comp_label = "High (Broad)"
+
+                    if dec_summary.opportunity_verdict == "STRONGER CANDIDATE":
+                        opp_badge = "🟢 STRONGER CANDIDATE"
+                    elif dec_summary.opportunity_verdict == "MODERATE CANDIDATE":
+                        opp_badge = "🟡 MODERATE CANDIDATE"
+                    elif dec_summary.opportunity_verdict == "INSUFFICIENT EVIDENCE":
+                        opp_badge = "⚪ INSUFFICIENT EVIDENCE"
+                    else:
+                        opp_badge = "🔴 WEAKER CANDIDATE"
+
+                    cat_val = "Generated Patterns"
 
                     unique_results.append({
                         "Keyword": p_kw,
                         "Tag": f"🏷️ {p_kw}",
                         "vidIQ Score": dec_summary.vidiq_score_display,
+                        "Opportunity Verdict": opp_badge,
                         "Ranking Chance": dec_summary.ranking_chance_display,
                         "Competition": comp_badge,
                         "Search Volume": dec_summary.search_volume_badge,
                         "Search Intent": intent_val,
+                        "Category": cat_val,
                         "Source": "Generated Pattern",
                         "Data Quality": "Generated suggestion",
                         "Decision Status": dec_summary.decision_status,
@@ -399,7 +443,10 @@ def render_keyword_research_tool() -> None:
                         "_score_num": dec_summary.vidiq_score,
                         "_ranking_chance": dec_summary.ranking_chance,
                         "_competition_tier": dec_summary.competition_tier,
+                        "_competition_label": dec_summary.competition_label,
+                        "_opportunity_verdict": dec_summary.opportunity_verdict,
                         "_comp_label": comp_label,
+                        "_category": cat_val,
                         "_source_type": "pattern",
                         "_raw_score": float(dec_summary.vidiq_score - 3) if dec_summary.decision_status != "Low relevance" else 0.0,
                         "_decision": dec_summary.to_dict(),
@@ -473,6 +520,29 @@ def render_keyword_research_tool() -> None:
         with m4:
             st.metric("Retrieval Speed", f"{st.session_state.kr_execution_time:.2f}s")
 
+        # Provenance Category Tabs (Stage 2)
+        cat_counts = {
+            "All Keywords": len(results),
+            "Direct Autocomplete": sum(1 for r in results if r.get("_category") == "Direct Autocomplete"),
+            "Related & Alphabet": sum(1 for r in results if r.get("_category") == "Related & Alphabet"),
+            "Questions & Long-Tail": sum(1 for r in results if r.get("_category") == "Questions & Long-Tail"),
+            "Generated Patterns": sum(1 for r in results if r.get("_category") == "Generated Patterns"),
+        }
+        cat_labels = [
+            f"All Sources ({cat_counts['All Keywords']})",
+            f"⚡ Direct Autocomplete ({cat_counts['Direct Autocomplete']})",
+            f"🔤 Related & Alphabet ({cat_counts['Related & Alphabet']})",
+            f"❓ Questions & Long-Tail ({cat_counts['Questions & Long-Tail']})",
+            f"💡 Generated Patterns ({cat_counts['Generated Patterns']})",
+        ]
+        sel_cat_pill = st.radio(
+            "Filter by Discovery Provenance:",
+            cat_labels,
+            horizontal=True,
+            key="kr_provenance_pill_select",
+            label_visibility="collapsed",
+        )
+
         # Filters & Search Controls (4 columns)
         c_f1, c_f2, c_f3, c_f4 = st.columns([2, 1.4, 1.3, 1.3])
         with c_f1:
@@ -481,7 +551,7 @@ def render_keyword_research_tool() -> None:
             rank_chances = ["All Ranking Chances", "🟢 Very High", "🟢 High", "🟡 Medium", "🔴 Low"]
             selected_rank_chance = st.selectbox("Filter Ranking Chance", rank_chances, key="kr_rank_chance_filter")
         with c_f3:
-            comp_options = ["All Competitions", "🟢 Low", "🟡 Medium", "🔴 High"]
+            comp_options = ["All Competitions", "🟢 LOW", "🟡 MEDIUM", "🔴 HIGH", "🟢 Low", "🟡 Medium", "🔴 High"]
             selected_comp = st.selectbox("Filter Competition", comp_options, key="kr_comp_filter")
         with c_f4:
             sources = ["All Sources", "YouTube Autocomplete", "Generated Pattern"]
@@ -489,14 +559,27 @@ def render_keyword_research_tool() -> None:
 
         # Apply filtering
         filtered_results = list(results)
+        if "Direct Autocomplete" in sel_cat_pill:
+            filtered_results = [r for r in filtered_results if r.get("_category") == "Direct Autocomplete"]
+            st.info("⚡ **Direct YouTube Autocomplete:** Actual user queries retrieved directly from YouTube search suggest without artificial modification.")
+        elif "Related & Alphabet" in sel_cat_pill:
+            filtered_results = [r for r in filtered_results if r.get("_category") == "Related & Alphabet"]
+            st.info("🔤 **Related & Alphabet Expansion:** Discovered via subsequent-word space completions and A-Z query drill-downs on YouTube.")
+        elif "Questions & Long-Tail" in sel_cat_pill:
+            filtered_results = [r for r in filtered_results if r.get("_category") == "Questions & Long-Tail"]
+            st.info("❓ **Questions & Long-Tail:** Intent-focused viewer questions (How-to, Tutorial, Review, Best, VS, 2026) verified on YouTube.")
+        elif "Generated Patterns" in sel_cat_pill:
+            filtered_results = [r for r in filtered_results if r.get("_category") == "Generated Patterns"]
+            st.info("💡 **Generated Creator Patterns:** Structural planning hypotheses created across 8 creator frameworks, not verified historical search volume.")
+
         if table_search.strip():
             filtered_results = [r for r in filtered_results if table_search.lower().strip() in r["Keyword"].lower()]
         if selected_rank_chance != "All Ranking Chances":
-            clean_rc = selected_rank_chance.replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
-            filtered_results = [r for r in filtered_results if clean_rc in str(r.get("Ranking Chance", ""))]
+            clean_rc = selected_rank_chance.replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+            filtered_results = [r for r in filtered_results if clean_rc in str(r.get("Ranking Chance", "")).lower()]
         if selected_comp != "All Competitions":
-            clean_cp = selected_comp.replace("🟢", "").replace("🟡", "").replace("🔴", "").strip()
-            filtered_results = [r for r in filtered_results if clean_cp in str(r.get("Competition", ""))]
+            clean_cp = selected_comp.replace("🟢", "").replace("🟡", "").replace("🔴", "").strip().lower()
+            filtered_results = [r for r in filtered_results if clean_cp in str(r.get("Competition", "")).lower()]
         if selected_source != "All Sources":
             filtered_results = [r for r in filtered_results if r.get("Source", "YouTube Autocomplete") == selected_source]
 
@@ -505,7 +588,7 @@ def render_keyword_research_tool() -> None:
         df_display = pd.DataFrame(filtered_results)
         
         display_cols = [
-            c for c in ["Keyword", "vidIQ Score", "Ranking Chance", "Competition", "Search Volume", "Search Intent", "Source", "Data Quality"]
+            c for c in ["Keyword", "vidIQ Score", "Opportunity Verdict", "Ranking Chance", "Competition", "Search Volume", "Search Intent", "Category", "Source", "Data Quality"]
             if c in df_display.columns
         ]
 
@@ -513,6 +596,13 @@ def render_keyword_research_tool() -> None:
             df_display[display_cols],
             column_config={
                 "Keyword": st.column_config.TextColumn("Keyword Phrase", width="large"),
+                "vidIQ Score": st.column_config.TextColumn("Overall Score", width="small", help="vidIQ-style overall score (0-100). Higher is better!"),
+                "Opportunity Verdict": st.column_config.TextColumn("Opportunity", width="medium", help="Heuristic candidate verdict: Stronger Candidate, Moderate, Weaker, or Insufficient Evidence."),
+                "Ranking Chance": st.column_config.TextColumn("Ranking Chance", width="medium", help="Probability of ranking based on competition, channel niche, and intent specificity."),
+                "Competition": st.column_config.TextColumn("Competition", width="small", help="Search competition level: LOW (Green), MEDIUM (Yellow), HIGH (Red)."),
+                "Search Volume": st.column_config.TextColumn("Search Volume", width="medium", help="Viewer search demand signal observed on YouTube."),
+                "Search Intent": st.column_config.TextColumn("Search Intent", width="medium"),
+                "Category": st.column_config.TextColumn("Provenance Category", width="medium"),
                 "vidIQ Score": st.column_config.TextColumn("Overall Score", width="small", help="vidIQ-style overall score (0-100). Higher is better!"),
                 "Ranking Chance": st.column_config.TextColumn("Ranking Chance", width="medium", help="Probability of ranking based on competition, channel niche, and intent specificity."),
                 "Competition": st.column_config.TextColumn("Competition", width="small", help="Search competition level: Low (Green), Medium (Yellow), High (Red)."),
@@ -571,7 +661,7 @@ def render_keyword_research_tool() -> None:
         _render_html(tag_studio_html)
 
         # 1-Click Copy Tag Buttons Row
-        c_tag1, c_tag2, c_tag3 = st.columns([2.5, 2, 1.5])
+        c_tag1, c_tag2, c_tag3, c_tag4 = st.columns([2.0, 1.8, 1.2, 1.8])
         with c_tag1:
             safe_tags = []
             cur_len = 0
@@ -608,6 +698,24 @@ def render_keyword_research_tool() -> None:
                 help="Download all discovered tags formatted with commas.",
             )
 
+        with c_tag4:
+            if st.button("🚀 Send Tags to SEO Generator", use_container_width=True, key="kr_send_tags_to_seo"):
+                st.session_state["seo_secondary_keywords"] = safe_tags_str
+                st.session_state["gen_sec_kws_input"] = safe_tags_str
+                st.session_state["current_page"] = TOOL_SEO_GENERATOR
+                st.success("✅ Tags sent to SEO Generator!")
+                st.rerun()
+
+        # Multi-select custom tag exporter (Stage 5)
+        with st.expander("✂️ Multi-Select & Custom Tag Exporter", expanded=False):
+            tag_options = [r["Keyword"] for r in filtered_results]
+            def_tags = [r["Keyword"] for r in filtered_results[:10]]
+            user_selected_tags = st.multiselect("Select individual tags to copy:", tag_options, default=def_tags, key="kr_custom_tag_multiselect")
+            if user_selected_tags:
+                sel_tag_str = ", ".join(user_selected_tags)
+                st.code(sel_tag_str, language=None)
+                st.caption(f"Selected: {len(user_selected_tags)} tags &middot; {len(sel_tag_str)} characters")
+
         # ==============================================================================
         # KEYWORD DECISION SUMMARY & EVIDENCE INSPECTOR
         # ==============================================================================
@@ -626,7 +734,8 @@ def render_keyword_research_tool() -> None:
                 
                 vidiq_score_str = sel_rec.get("vidIQ Score", dec.get("vidiq_score_display", "🟢 80/100"))
                 ranking_chance_str = sel_rec.get("Ranking Chance", dec.get("ranking_chance_display", "🟢 High"))
-                comp_badge_str = sel_rec.get("Competition", "🟢 Low")
+                comp_badge_str = sel_rec.get("Competition", "🟢 LOW")
+                opp_verdict_str = sel_rec.get("Opportunity Verdict", dec.get("opportunity_verdict", "🟢 STRONGER CANDIDATE"))
                 volume_str = sel_rec.get("Search Volume", "🟢 High Demand")
 
                 inspector_html = f"""
@@ -642,10 +751,10 @@ def render_keyword_research_tool() -> None:
                         </div>
                         <div style="display: flex; align-items: center; gap: 6px;">
                             <span style="background: {source_badge_bg}; color: {source_badge_color}; font-weight: 700; font-size: 0.80rem; padding: 4px 10px; border-radius: 12px;">
-                                {sel_rec.get('Source', 'Autocomplete')}
+                                {sel_rec.get('Category', sel_rec.get('Source', 'Autocomplete'))}
                             </span>
                             <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px;">
-                                {dec.get('decision_status', 'Good candidate')}
+                                {opp_verdict_str}
                             </span>
                         </div>
                     </div>

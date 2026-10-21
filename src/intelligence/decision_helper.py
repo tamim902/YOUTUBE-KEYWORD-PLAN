@@ -75,7 +75,9 @@ class KeywordDecisionSummary:
     )
     ranking_chance: str = "High"  # "Very High", "High", "Medium", "Low"
     ranking_chance_display: str = "🟢 High"
-    competition_tier: str = "Low"  # "Low", "Medium", "High"
+    competition_tier: str = "Low"  # "Low", "Medium", "High", "Unknown"
+    competition_label: str = "LOW"  # Stage 6: "LOW", "MEDIUM", "HIGH", "UNKNOWN"
+    opportunity_verdict: str = "STRONGER CANDIDATE"  # Stage 6: "STRONGER CANDIDATE", "MODERATE CANDIDATE", "WEAKER CANDIDATE", "INSUFFICIENT EVIDENCE"
     vidiq_score: int = 75
     vidiq_score_display: str = "🟢 75/100"
     search_volume_badge: str = "High Demand"
@@ -100,6 +102,8 @@ class KeywordDecisionSummary:
             "ranking_chance": self.ranking_chance,
             "ranking_chance_display": self.ranking_chance_display,
             "competition_tier": self.competition_tier,
+            "competition_label": self.competition_label,
+            "opportunity_verdict": self.opportunity_verdict,
             "vidiq_score": self.vidiq_score,
             "vidiq_score_display": self.vidiq_score_display,
             "search_volume_badge": self.search_volume_badge,
@@ -318,6 +322,14 @@ class KeywordDecisionHelper:
                 recommended_action="Enter a valid seed keyword with 2 to 5 words to begin research.",
                 opportunity_score_display="Insufficient data",
                 data_quality_label="Incomplete research",
+                ranking_chance="Low",
+                ranking_chance_display="🔴 Low",
+                competition_tier="Unknown",
+                competition_label="UNKNOWN",
+                opportunity_verdict="INSUFFICIENT EVIDENCE",
+                vidiq_score=0,
+                vidiq_score_display="🔴 0/100",
+                search_volume_badge="Unavailable",
             )
 
         # 2. Relevance Check
@@ -475,6 +487,25 @@ class KeywordDecisionHelper:
         else:
             data_quality_label = "Live API data"
 
+        # 11. Stage 6 Standardized Competition and Opportunity Labels
+        if competition_tier == "Low":
+            competition_label = "LOW"
+        elif competition_tier == "Medium":
+            competition_label = "MEDIUM"
+        elif competition_tier == "High":
+            competition_label = "HIGH"
+        else:
+            competition_label = "UNKNOWN"
+
+        if not is_relevant:
+            opportunity_verdict = "WEAKER CANDIDATE"
+        elif rank_pts >= 65 and competition_tier in ("Low", "Medium"):
+            opportunity_verdict = "STRONGER CANDIDATE"
+        elif rank_pts >= 45:
+            opportunity_verdict = "MODERATE CANDIDATE"
+        else:
+            opportunity_verdict = "WEAKER CANDIDATE"
+
         return KeywordDecisionSummary(
             keyword=clean_kw,
             decision_status=decision_status,
@@ -492,6 +523,8 @@ class KeywordDecisionHelper:
             ranking_chance=ranking_chance,
             ranking_chance_display=ranking_chance_display,
             competition_tier=competition_tier,
+            competition_label=competition_label,
+            opportunity_verdict=opportunity_verdict,
             vidiq_score=vidiq_num,
             vidiq_score_display=vidiq_score_display,
             search_volume_badge=search_volume_badge,

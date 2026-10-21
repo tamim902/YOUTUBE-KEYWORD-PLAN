@@ -99,9 +99,16 @@ class YouTubeAutocompleteProvider(BaseAutocompleteProvider):
         cancellation_token: Optional[threading.Event] = None,
     ) -> List[AutocompleteResult]:
         """Fetch autocomplete suggestions with retries, caching, and Unicode normalization."""
-        cleaned_query = unicodedata.normalize("NFC", query).strip()
-        if not cleaned_query:
+        stripped = unicodedata.normalize("NFC", query).strip()
+        if not stripped:
             return []
+        words = stripped.split()
+        base = " ".join(words).strip("\"'`[]{}()*;^~")
+        if not base:
+            return []
+        # Preserve single trailing space if query was a deliberate space expansion (starts without space, ends with space)
+        is_space_expansion = query.endswith(" ") and not query.startswith(" ")
+        cleaned_query = f"{base} " if is_space_expansion else base
 
         lang_code = language.strip().lower() or "en"
         country_code = country.strip().upper() or "US"
