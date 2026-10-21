@@ -393,7 +393,7 @@ class KeywordDecisionHelper:
             opportunity_score_display = "Insufficient data"
 
         # 10. Data Quality Label
-        if source_type in ("generated_suggestion", "pattern"):
+        if source_type in ("generated_suggestion", "pattern", "generated_pattern"):
             data_quality_label = "Generated suggestion"
         elif source_type == "provider_estimate":
             data_quality_label = "Provider-sourced estimate"

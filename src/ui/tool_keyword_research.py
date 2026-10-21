@@ -2,13 +2,15 @@
 
 Provides a clean, fast, beginner-friendly interface for YouTube keyword discovery:
 - Auto-detects active channel niche, language, and country preferences
+- "Find for This Channel" action button with automated backlog deduplication
 - Live YouTube Autocomplete with question patterns and preposition variations
 - Alphabet-based expansion (A-Z)
-- Genuine search volume status via volume provider architecture
-- Clean results table: Keyword | Search Volume | Competition | Search Intent | Source | Opportunity Score
-- One-click copy for every keyword, multi-select copy, and "Copy All Suggestions"
-- Formula-safe CSV export
 - Integrated Pattern Generator for candidate video angles across 8 frameworks
+- Transparent Source and Data Quality distinction (YouTube Autocomplete vs Generated Pattern)
+- Genuine search volume status via volume provider architecture (honest "Volume unavailable")
+- Clean results table: Keyword | Source | Data Quality | Decision Status | Search Volume | Competition | Search Intent | Opportunity Score
+- One-click copy for single keyword, multi-select copy, and all visible keywords
+- Formula-safe CSV export for selected or all visible keywords
 - 1-click cross-tool sending to Video Research, Competitor Research, and SEO Generator
 """
 
@@ -65,9 +67,10 @@ def render_keyword_research_tool() -> None:
         """
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #3B82F6; 
                     border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; color: #475569;">
-            💡 <b>Data Transparency Notice:</b> Results represent real viewer queries actively suggested by YouTube's autocomplete engine. 
-            YouTube does not provide official public monthly search volume; where third-party volume is not connected, it is honestly labeled 
-            <b>"Volume unavailable"</b> rather than fabricated. Relevance scores indicate topic alignment, not guaranteed rankings.
+            💡 <b>Data Transparency Notice:</b> Results represent real viewer queries actively suggested by YouTube's autocomplete engine, 
+            along with structural pattern hypotheses across 8 creator frameworks. YouTube does not provide official public monthly search volume; 
+            where third-party volume is not connected, it is honestly labeled <b>"Volume unavailable"</b> rather than fabricated. 
+            Relevance scores indicate topic alignment, not guaranteed rankings.
         </div>
         """,
         unsafe_allow_html=True,
@@ -77,7 +80,6 @@ def render_keyword_research_tool() -> None:
     if "kr_results" not in st.session_state:
         st.session_state.kr_results = []
     if "kr_last_query" not in st.session_state:
-        # Default to active channel's niche if available
         st.session_state.kr_last_query = active_channel.channel_niche.split("&")[0].strip()
     if "kr_execution_time" not in st.session_state:
         st.session_state.kr_execution_time = 0.0
@@ -86,7 +88,7 @@ def render_keyword_research_tool() -> None:
 
     # Main Input Form
     with st.container():
-        c_in1, c_in2 = st.columns([3.5, 1.5])
+        c_in1, c_in2, c_in3 = st.columns([3.2, 1.3, 1.5])
         with c_in1:
             query = st.text_input(
                 "Enter Seed Keyword or Topic",
@@ -99,6 +101,16 @@ def render_keyword_research_tool() -> None:
             st.write("")  # Spacing
             st.write("")
             btn_search = st.button("🔍 Find Keywords", type="primary", use_container_width=True, key="kr_submit_btn")
+        with c_in3:
+            st.write("")
+            st.write("")
+            btn_find_channel = st.button(
+                "🎯 Find for This Channel",
+                type="secondary",
+                use_container_width=True,
+                key="kr_chan_search_btn",
+                help=f"Auto-research keywords for {active_channel.channel_name} ({active_channel.channel_niche}) excluding saved backlog.",
+            )
 
         # Compact Settings Expander (Pre-filled from active channel)
         with st.expander("⚙️ Advanced Research Settings (Optional)", expanded=False):
@@ -141,10 +153,29 @@ def render_keyword_research_tool() -> None:
                 )
 
     # Handle Search Submission
-    if btn_search and query.strip():
-        clean_q = query.strip()
+    should_run_search = False
+    is_channel_discovery = False
+    clean_q = ""
+
+    if btn_find_channel:
+        clean_q = active_channel.channel_niche.split("&")[0].strip()
+        st.session_state["kr_seed_input"] = clean_q
         st.session_state.kr_last_query = clean_q
-        with st.spinner(f"Querying YouTube autocomplete for '{clean_q}'..."):
+        is_channel_discovery = True
+        should_run_search = True
+    elif btn_search and query.strip():
+        clean_q = " ".join(query.strip().split())
+        st.session_state.kr_last_query = clean_q
+        is_channel_discovery = False
+        should_run_search = True
+
+    if should_run_search and clean_q:
+        spinner_msg = (
+            f"🎯 Auto-discovering keywords tailored to {active_channel.channel_name} ({clean_q})..."
+            if is_channel_discovery
+            else f"Querying YouTube autocomplete and generating keyword patterns for '{clean_q}'..."
+        )
+        with st.spinner(spinner_msg):
             t0 = time.time()
             provider = YouTubeAutocompleteProvider(database_manager=db_manager)
             all_suggestions: List[AutocompleteResult] = []
@@ -195,26 +226,49 @@ def render_keyword_research_tool() -> None:
                     )
                     all_suggestions.extend(char_suggs[:2])
 
+            # 4. Relevant creator keyword patterns across 8 frameworks
+            pat_cfg = PatternConfig(
+                seeds=[clean_q],
+                categories=list(PatternCategory),
+                language_mode=PatternLanguage.EN,
+                alternatives=None,
+                include_current_year=True,
+                max_generated=25,
+            )
+            pat_generator = SmartKeywordPatternGenerator()
+            generated_patterns = pat_generator.generate(pat_cfg)
+
+            # Load channel backlog if channel discovery
+            saved_list = st.session_state.get(f"saved_ideas_channel_{active_channel.id}", [])
+            saved_topics = {s.get("topic", "").lower().strip() for s in saved_list if isinstance(s, dict) and s.get("topic")}
+            saved_kws = {s.get("keyword", "").lower().strip() for s in saved_list if isinstance(s, dict) and s.get("keyword")}
+            excluded_channel_backlog = saved_topics.union(saved_kws).union({t.lower().strip() for t in active_channel.existing_video_topics})
+
             dt = time.time() - t0
             st.session_state.kr_execution_time = dt
             st.session_state["kr_executed_queries"] = executed_queries
 
-            # Deduplicate by keyword
+            # Deduplicate by normalized keyword with Autocomplete priority
             seen = set()
             unique_results = []
+            clean_q_norm = " ".join(clean_q.lower().split())
+
+            # Process Autocomplete suggestions first
             for s in all_suggestions:
-                k_norm = s.keyword.lower().strip()
-                if k_norm not in seen and k_norm != clean_q.lower():
+                k_norm = " ".join(s.keyword.lower().strip().split())
+                if not k_norm or len(k_norm) < 2 or k_norm == clean_q_norm:
+                    continue
+                if is_channel_discovery and (k_norm in excluded_channel_backlog or any(b in k_norm for b in excluded_channel_backlog if len(b) > 5)):
+                    continue
+                if k_norm not in seen:
                     seen.add(k_norm)
                     cls = default_classifier.classify(s.keyword)
                     score_res = default_scorer.score(s.keyword, clean_q, cls)
                     words_count = len(s.keyword.split())
                     comp_label = "Low (Long-tail)" if words_count >= 4 else "Moderate" if words_count == 3 else "High (Broad)"
                     
-                    # Search volume via provider
                     vol_obj = default_volume_provider.get_keyword_volume(s.keyword, country=selected_country)
 
-                    # Build Phase 38 Keyword Decision Summary with plain-language status
                     dec_summary = keyword_decision_helper.build_decision_summary(
                         keyword=s.keyword,
                         seed_query=clean_q,
@@ -229,14 +283,59 @@ def render_keyword_research_tool() -> None:
 
                     unique_results.append({
                         "Keyword": s.keyword,
+                        "Source": "YouTube Autocomplete",
+                        "Data Quality": dec_summary.data_quality_label,
                         "Decision Status": dec_summary.decision_status,
                         "Search Volume": vol_obj.display_metric,
                         "Competition": comp_label,
                         "Search Intent": cls.primary_intent.value,
-                        "Data Quality": dec_summary.data_quality_label,
                         "Opportunity Score": dec_summary.opportunity_score_display,
-                        "Source": "YouTube Autocomplete",
+                        "_source_type": "autocomplete",
                         "_raw_score": score_res.total_score if dec_summary.decision_status != "Low relevance" else 0.0,
+                        "_decision": dec_summary.to_dict(),
+                        "_score_breakdown": score_res.to_dict(),
+                    })
+
+            # Process Generated Patterns next
+            for p in generated_patterns:
+                k_norm = " ".join(p.keyword.lower().strip().split())
+                if not k_norm or len(k_norm) < 2 or k_norm == clean_q_norm:
+                    continue
+                if is_channel_discovery and (k_norm in excluded_channel_backlog or any(b in k_norm for b in excluded_channel_backlog if len(b) > 5)):
+                    continue
+                if k_norm not in seen:
+                    seen.add(k_norm)
+                    cls = default_classifier.classify(p.keyword)
+                    score_res = default_scorer.score(p.keyword, clean_q, cls)
+                    words_count = len(p.keyword.split())
+                    comp_label = "Low (Long-tail)" if words_count >= 4 else "Moderate" if words_count == 3 else "High (Broad)"
+                    vol_obj = default_volume_provider.get_keyword_volume(p.keyword, country=selected_country)
+
+                    intent_val = p.intent.value if hasattr(p.intent, "value") else cls.primary_intent.value
+
+                    dec_summary = keyword_decision_helper.build_decision_summary(
+                        keyword=p.keyword,
+                        seed_query=clean_q,
+                        channel=active_channel,
+                        is_cached=False,
+                        retrieved_at=None,
+                        queries_executed_count=len(executed_queries),
+                        volume_status=vol_obj.display_metric,
+                        raw_score=score_res.total_score,
+                        source_type="generated_pattern",
+                    )
+
+                    unique_results.append({
+                        "Keyword": p.keyword,
+                        "Source": "Generated Pattern",
+                        "Data Quality": "Generated suggestion",
+                        "Decision Status": dec_summary.decision_status,
+                        "Search Volume": vol_obj.display_metric,
+                        "Competition": comp_label,
+                        "Search Intent": intent_val,
+                        "Opportunity Score": dec_summary.opportunity_score_display,
+                        "_source_type": "pattern",
+                        "_raw_score": (score_res.total_score - 5.0) if dec_summary.decision_status != "Low relevance" else 0.0,
                         "_decision": dec_summary.to_dict(),
                         "_score_breakdown": score_res.to_dict(),
                     })
@@ -278,15 +377,18 @@ def render_keyword_research_tool() -> None:
     if results:
         st.markdown("---")
         
-        # Research Coverage Reporting Banner
+        ac_count = sum(1 for r in results if r.get("Source", "YouTube Autocomplete") == "YouTube Autocomplete")
+        pat_count = sum(1 for r in results if r.get("Source") == "Generated Pattern")
         executed_list = st.session_state.get("kr_executed_queries", [st.session_state.kr_last_query])
+
+        # Research Coverage Reporting Banner
         st.markdown(
             f"""
             <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.84rem; color: #475569;">
                 📊 <b>Research Coverage:</b> Executed <b>{len(executed_list)}</b> queries in {st.session_state.kr_execution_time:.2f}s &middot; 
-                <b>Pagination:</b> Page 1 of 1 (Top Autocomplete suggestions) &middot; 
-                <b>API Limits:</b> Respected (0 quota units used, free autocomplete endpoint) &middot; 
-                <b>Completeness:</b> Complete ({len(results)} discovered keywords)
+                <b>Discovered:</b> {len(results)} keywords ({ac_count} Autocomplete suggestions + {pat_count} Generated Patterns) &middot; 
+                <b>API Quota:</b> 0 units used (Public Autocomplete endpoint) &middot; 
+                <b>Channel Context:</b> Aligned with <b>{active_channel.channel_name}</b> ({active_channel.channel_niche})
             </div>
             """,
             unsafe_allow_html=True,
@@ -295,22 +397,25 @@ def render_keyword_research_tool() -> None:
         # Metric Tiles
         m1, m2, m3, m4 = st.columns(4)
         with m1:
-            st.metric("Total Keywords Discovered", len(results))
+            st.metric("Total Keywords Discovered", len(results), help=f"{ac_count} from YouTube Autocomplete, {pat_count} from Generated Patterns")
         with m2:
             top_intent = results[0]["Search Intent"] if results else "N/A"
             st.metric("Top Search Intent", top_intent)
         with m3:
-            st.metric("Search Volume Data", "Volume unavailable", help="Official YouTube search volumes are not public. Real autocomplete query signals are shown.")
+            st.metric("Search Volume Data", "Volume unavailable", help="Official YouTube search volumes are not public. Real autocomplete query signals and patterns are shown.")
         with m4:
             st.metric("Retrieval Speed", f"{st.session_state.kr_execution_time:.2f}s")
 
-        # Filters & Search Controls
-        c_f1, c_f2 = st.columns([2.5, 1.5])
+        # Filters & Search Controls (3 columns)
+        c_f1, c_f2, c_f3 = st.columns([2.2, 1.4, 1.4])
         with c_f1:
             table_search = st.text_input("🔍 Filter keywords", placeholder="Type to filter results...", key="kr_table_search")
         with c_f2:
             intents = ["All Intents"] + sorted(list(set(r["Search Intent"] for r in results)))
             selected_intent = st.selectbox("Filter Intent", intents, key="kr_intent_filter")
+        with c_f3:
+            sources = ["All Sources", "YouTube Autocomplete", "Generated Pattern"]
+            selected_source = st.selectbox("Filter Source", sources, key="kr_source_filter")
 
         # Apply filtering
         filtered_results = list(results)
@@ -318,13 +423,15 @@ def render_keyword_research_tool() -> None:
             filtered_results = [r for r in filtered_results if table_search.lower().strip() in r["Keyword"].lower()]
         if selected_intent != "All Intents":
             filtered_results = [r for r in filtered_results if r["Search Intent"] == selected_intent]
+        if selected_source != "All Sources":
+            filtered_results = [r for r in filtered_results if r.get("Source", "YouTube Autocomplete") == selected_source]
 
-        # Results Table with Decision Status & Data Quality indicators
+        # Results Table with Source & Data Quality indicators
         st.caption(f"Showing **{len(filtered_results)}** of {len(results)} discovered keywords:")
         df_display = pd.DataFrame(filtered_results)
         
         display_cols = [
-            c for c in ["Keyword", "Decision Status", "Search Volume", "Competition", "Search Intent", "Data Quality", "Opportunity Score"]
+            c for c in ["Keyword", "Source", "Data Quality", "Decision Status", "Search Volume", "Competition", "Search Intent", "Opportunity Score"]
             if c in df_display.columns
         ]
 
@@ -332,11 +439,12 @@ def render_keyword_research_tool() -> None:
             df_display[display_cols],
             column_config={
                 "Keyword": st.column_config.TextColumn("Keyword", width="large"),
+                "Source": st.column_config.TextColumn("Source", width="medium"),
+                "Data Quality": st.column_config.TextColumn("Data Quality", width="medium"),
                 "Decision Status": st.column_config.TextColumn("Decision Status", width="medium"),
                 "Search Volume": st.column_config.TextColumn("Search Volume", width="medium"),
                 "Competition": st.column_config.TextColumn("Competition", width="small"),
                 "Search Intent": st.column_config.TextColumn("Search Intent", width="medium"),
-                "Data Quality": st.column_config.TextColumn("Data Quality", width="small"),
                 "Opportunity Score": st.column_config.TextColumn("Opportunity Score", width="small"),
             },
             hide_index=True,
@@ -348,157 +456,194 @@ def render_keyword_research_tool() -> None:
         st.caption("Select any discovered keyword to inspect its full 8-point evidence summary, data quality indicators, and scoring formula:")
 
         kw_names = [r["Keyword"] for r in filtered_results]
-        sel_kw = st.selectbox("Select Keyword to Inspect", kw_names, key="kr_inspect_select")
-        sel_rec = next((r for r in filtered_results if r["Keyword"] == sel_kw), None)
+        if kw_names:
+            sel_kw = st.selectbox("Select Keyword to Inspect", kw_names, key="kr_inspect_select")
+            sel_rec = next((r for r in filtered_results if r["Keyword"] == sel_kw), None)
 
-        if sel_rec and "_decision" in sel_rec:
-            dec = sel_rec["_decision"]
-            st.markdown(
-                f"""
-                <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-                        <h4 style="margin: 0; font-size: 1.18rem; color: #0F172A; font-weight: 700;">
-                            {dec['keyword']}
-                        </h4>
-                        <div>
-                            <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px; margin-right: 6px;">
-                                {dec['decision_status']}
-                            </span>
-                            <span style="background: #F1F5F9; color: #475569; font-weight: 600; font-size: 0.78rem; padding: 4px 10px; border-radius: 12px;">
-                                {dec['data_quality_label']}
-                            </span>
-                        </div>
-                    </div>
-                    <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.90rem; color: #1E3A8A;">
-                        💡 <b>Recommendation:</b> {dec['explanation']}
-                    </div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 0.85rem; color: #334155; line-height: 1.5;">
-                        <div>• <b>Relevance to Niche:</b> {dec['relevance_to_niche']}</div>
-                        <div>• <b>Search Volume & Source:</b> {dec['search_volume_and_source']}</div>
-                        <div>• <b>Competition Evidence:</b> {dec['competition_evidence']}</div>
-                        <div>• <b>Search Intent:</b> {dec['search_intent']}</div>
-                        <div>• <b>Recent Video Evidence:</b> {dec['recent_video_evidence']}</div>
-                        <div>• <b>Data Freshness:</b> {dec['data_freshness']}</div>
-                        <div>• <b>Research Completeness:</b> {dec['research_completeness']}</div>
-                        <div>• <b>Recommended Action:</b> {dec['recommended_action']}</div>
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            # Collapsible Scoring Formula Expander
-            with st.expander("📐 Transparent Scoring Formula & Evidence Contribution", expanded=False):
-                st.markdown(
-                    """
-                    **Transparent Heuristic Relevance Scoring Formula:**
-                    $$\\text{Relevance Score} = (\\text{Seed Overlap} \\times 0.40) + (\\text{Sequence Similarity} \\times 0.30) + (\\text{Intent Clarity} \\times 0.20) + (\\text{Length Quality} \\times 0.10)$$
-                    """
-                )
-                sb = sel_rec.get("_score_breakdown", {})
+            if sel_rec and "_decision" in sel_rec:
+                dec = sel_rec["_decision"]
+                source_badge_color = "#2563EB" if sel_rec.get("Source") == "YouTube Autocomplete" else "#7C3AED"
+                source_badge_bg = "#EFF6FF" if sel_rec.get("Source") == "YouTube Autocomplete" else "#F5F3FF"
+                
                 st.markdown(
                     f"""
-                    - **Seed Overlap (0–40 pts):** {sb.get('seed_term_score', 0):.1f} pts (Token overlap with seed/niche)
-                    - **Sequence Similarity (0–30 pts):** {sb.get('similarity_score', 0):.1f} pts (Character and token sequence alignment)
-                    - **Intent Clarity (0–20 pts):** {sb.get('intent_score', 0):.1f} pts (Structured intent clarity e.g. How-to, Review, Buyer)
-                    - **Length Quality (0–10 pts):** {sb.get('length_score', 0):.1f} pts (Optimal 2–6 word sweet spot for video queries)
-                    - **Duplicate Repetition Penalty:** -{sb.get('penalty', 0):.0f} pts
-                    - **Calculated Score:** `{sel_rec.get('Opportunity Score', 'Insufficient data')}`
-                    """
+                    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <h4 style="margin: 0; font-size: 1.18rem; color: #0F172A; font-weight: 700;">
+                                {dec['keyword']}
+                            </h4>
+                            <div>
+                                <span style="background: {source_badge_bg}; color: {source_badge_color}; font-weight: 700; font-size: 0.80rem; padding: 4px 10px; border-radius: 12px; margin-right: 6px;">
+                                    {sel_rec.get('Source', 'Autocomplete')}
+                                </span>
+                                <span style="background: #EFF6FF; color: #2563EB; font-weight: 700; font-size: 0.80rem; padding: 4px 12px; border-radius: 12px; margin-right: 6px;">
+                                    {dec['decision_status']}
+                                </span>
+                                <span style="background: #F1F5F9; color: #475569; font-weight: 600; font-size: 0.78rem; padding: 4px 10px; border-radius: 12px;">
+                                    {dec['data_quality_label']}
+                                </span>
+                            </div>
+                        </div>
+                        <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; border-radius: 4px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.90rem; color: #1E3A8A;">
+                            💡 <b>Recommendation:</b> {dec['explanation']}
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 0.85rem; color: #334155; line-height: 1.5;">
+                            <div>• <b>Relevance to Niche:</b> {dec['relevance_to_niche']}</div>
+                            <div>• <b>Search Volume & Source:</b> {dec['search_volume_and_source']}</div>
+                            <div>• <b>Competition Evidence:</b> {dec['competition_evidence']}</div>
+                            <div>• <b>Search Intent:</b> {dec['search_intent']}</div>
+                            <div>• <b>Recent Video Evidence:</b> {dec['recent_video_evidence']}</div>
+                            <div>• <b>Data Freshness:</b> {dec['data_freshness']}</div>
+                            <div>• <b>Research Completeness:</b> {dec['research_completeness']}</div>
+                            <div>• <b>Recommended Action:</b> {dec['recommended_action']}</div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-                st.caption(f"ℹ️ {dec['disclaimer']}")
 
-            # 1-Click Copy snippet for this keyword decision
-            dec_copy_snippet = f"Keyword: {dec['keyword']}\nStatus: {dec['decision_status']}\nRelevance: {dec['relevance_to_niche']}\nIntent: {dec['search_intent']}\nRecommendation: {dec['recommended_action']}"
-            st.code(dec_copy_snippet, language="text")
+                # Collapsible Scoring Formula Expander
+                with st.expander("📐 Transparent Scoring Formula & Evidence Contribution", expanded=False):
+                    st.markdown(
+                        """
+                        **Transparent Heuristic Relevance Scoring Formula:**
+                        $$\\text{Relevance Score} = (\\text{Seed Overlap} \\times 0.40) + (\\text{Sequence Similarity} \\times 0.30) + (\\text{Intent Clarity} \\times 0.20) + (\\text{Length Quality} \\times 0.10)$$
+                        """
+                    )
+                    sb = sel_rec.get("_score_breakdown", {})
+                    st.markdown(
+                        f"""
+                        - **Seed Overlap (0–40 pts):** {sb.get('seed_term_score', 0):.1f} pts (Token overlap with seed/niche)
+                        - **Sequence Similarity (0–30 pts):** {sb.get('similarity_score', 0):.1f} pts (Character and token sequence alignment)
+                        - **Intent Clarity (0–20 pts):** {sb.get('intent_score', 0):.1f} pts (Structured intent clarity e.g. How-to, Review, Buyer)
+                        - **Length Quality (0–10 pts):** {sb.get('length_score', 0):.1f} pts (Optimal 2–6 word sweet spot for video queries)
+                        - **Duplicate Repetition Penalty:** -{sb.get('penalty', 0):.0f} pts
+                        - **Calculated Score:** `{sel_rec.get('Opportunity Score', 'Insufficient data')}`
+                        """
+                    )
+                    st.caption(f"ℹ️ {dec['disclaimer']}")
 
-        # Bulk & Multi-Select Copy Actions
-        st.markdown("#### 📋 Copy & Export Actions")
-        c_cp1, c_cp2, c_cp3, c_cp4 = st.columns([1.5, 1.5, 1.5, 1.5])
+                # 1-Click Copy snippet for this keyword decision
+                dec_copy_snippet = f"Keyword: {dec['keyword']}\nSource: {sel_rec.get('Source')}\nStatus: {dec['decision_status']}\nRelevance: {dec['relevance_to_niche']}\nIntent: {dec['search_intent']}\nRecommendation: {dec['recommended_action']}"
+                st.code(dec_copy_snippet, language="text")
 
-        with c_cp1:
-            all_kw_text = "\n".join(r["Keyword"] for r in filtered_results)
+        # Bulk Keyword Actions & Cross-Tool Handoff
+        st.markdown("### 📋 Bulk Keyword Actions & Cross-Tool Handoff")
+        st.caption("Perform one-click bulk operations on discovered keywords or hand them off directly to other tools:")
+
+        # Multi-select widget
+        all_filtered_kw_names = [r["Keyword"] for r in filtered_results]
+        selected_kws = st.multiselect(
+            "Select Keywords for Bulk Action (Optional — leave empty to target all visible):",
+            options=all_filtered_kw_names,
+            default=[],
+            key="kr_bulk_multiselect",
+            help="Select one or more keywords to copy, export, or send to other tools.",
+        )
+
+        targeted_kws = selected_kws if selected_kws else all_filtered_kw_names
+        target_label = f"Selected ({len(selected_kws)})" if selected_kws else f"All Visible ({len(all_filtered_kw_names)})"
+
+        c_act1, c_act2, c_act3, c_act4 = st.columns([1.5, 1.5, 1.5, 1.5])
+
+        with c_act1:
+            with st.popover(f"📋 Copy {target_label}"):
+                st.markdown(f"**Copy {len(targeted_kws)} Keywords:**")
+                copy_text = "\n".join(targeted_kws)
+                st.code(copy_text, language=None)
+                st.caption("Click the clipboard icon in the top-right of the code box above to copy.")
+
+        with c_act2:
+            copy_text = "\n".join(targeted_kws)
             st.download_button(
-                label=f"📋 Download All ({len(filtered_results)})",
-                data=all_kw_text,
-                file_name=f"all_keywords_{st.session_state.kr_last_query.replace(' ', '_')}.txt",
+                label=f"📄 Download Text ({len(targeted_kws)})",
+                data=copy_text,
+                file_name=f"keywords_{st.session_state.kr_last_query.replace(' ', '_')}_{len(targeted_kws)}.txt",
                 mime="text/plain",
                 use_container_width=True,
-                key="kr_dl_all_btn",
-                help="Download or copy all discovered keywords formatted as plain text.",
+                key="kr_dl_txt_btn",
+                help="Download targeted keywords as a clean line-by-line text file.",
             )
 
-        with c_cp2:
+        with c_act3:
             export_svc = ExportService()
-            clean_df = pd.DataFrame(filtered_results).drop(columns=["_raw_score"], errors="ignore")
+            targeted_rows = [r for r in filtered_results if r["Keyword"] in targeted_kws]
+            clean_df = pd.DataFrame(targeted_rows).drop(columns=["_raw_score", "_source_type"], errors="ignore")
             csv_bytes = export_svc.export_csv(clean_df, sanitize_formulas=True)
             st.download_button(
-                label="📥 Export CSV",
+                label=f"📥 Export CSV ({len(targeted_rows)})",
                 data=csv_bytes,
                 file_name=f"keywords_{st.session_state.kr_last_query.replace(' ', '_')}.csv",
                 mime="text/csv",
                 use_container_width=True,
                 key="kr_dl_csv_btn",
+                help="Download targeted keyword records as a formula-safe CSV spreadsheet.",
             )
 
-        with c_cp3:
-            # Multi-keyword selection to copy together
-            with st.popover("📋 1-Click Copy"):
-                st.caption("1-Click Copy Selected or All Keywords:")
-                with st.expander("Copy All Keywords", expanded=False):
-                    st.code(all_kw_text, language=None)
-                kw_options = [r["Keyword"] for r in filtered_results]
-                selected_multi = st.multiselect("Pick specific keywords to copy:", options=kw_options, key="kr_multi_select")
-                if selected_multi:
-                    multi_text = "\n".join(selected_multi)
-                    st.code(multi_text, language=None)
-                    st.success(f"✅ {len(selected_multi)} keywords ready to copy above!")
-
-        with c_cp4:
-            if st.button("🔄 Retry Research", use_container_width=True, key="kr_retry_btn"):
+        with c_act4:
+            if st.button("🔄 Reset Research", use_container_width=True, key="kr_reset_btn"):
                 st.session_state.kr_results = []
+                st.session_state.kr_patterns = []
                 st.rerun()
 
-        # Per-Keyword Quick Actions
+        # Cross-Tool Handoff Row
         st.markdown("#### 🚀 Send Keyword to Other Tools")
-        if filtered_results:
-            top_kw = filtered_results[0]["Keyword"]
+        st.caption("Seamlessly pass your selected keyword and supporting phrases into downstream tools:")
+
+        c_pick, c_btn_vr, c_btn_cr, c_btn_seo = st.columns([2.5, 1.5, 1.5, 1.5])
+        with c_pick:
+            default_handoff_idx = 0
+            if selected_kws and selected_kws[0] in all_filtered_kw_names:
+                default_handoff_idx = all_filtered_kw_names.index(selected_kws[0])
             
-            c_sel_col, c_btn_vr, c_btn_cr, c_btn_seo = st.columns([2, 1.5, 1.5, 1.5])
-            with c_sel_col:
-                picked_kw = st.selectbox(
-                    "Selected Keyword for Handoff",
-                    options=[r["Keyword"] for r in filtered_results],
-                    index=0,
-                    key="kr_picked_handoff_select",
-                )
-            with c_btn_vr:
-                st.write("")
-                st.write("")
-                if st.button("🎥 Video Research", use_container_width=True, key="kr_send_vr_btn"):
-                    st.session_state.vr_target_keyword = picked_kw
-                    st.session_state.current_page = TOOL_VIDEO_RESEARCH
-                    st.rerun()
-            with c_btn_cr:
-                st.write("")
-                st.write("")
-                if st.button("🎯 Competitor Research", use_container_width=True, key="kr_send_cr_btn"):
-                    st.session_state.cr_last_query = picked_kw
-                    st.session_state.current_page = TOOL_COMPETITOR_RESEARCH
-                    st.rerun()
-            with c_btn_seo:
-                st.write("")
-                st.write("")
-                if st.button("✨ SEO Generator", type="primary", use_container_width=True, key="kr_send_seo_btn"):
-                    st.session_state.seo_main_keyword = picked_kw
-                    st.session_state.seo_secondary_keywords = ", ".join(r["Keyword"] for r in filtered_results[1:5])
-                    st.session_state.current_page = TOOL_SEO_GENERATOR
-                    st.rerun()
+            picked_handoff_kw = st.selectbox(
+                "Keyword for Cross-Tool Handoff:",
+                options=all_filtered_kw_names,
+                index=default_handoff_idx,
+                key="kr_handoff_kw_select",
+            )
+
+        with c_btn_vr:
+            st.write("")
+            st.write("")
+            if st.button("🎥 Video Research", use_container_width=True, key="kr_send_vr_btn", help="Inspect ranking videos and view counts for this keyword."):
+                st.session_state.vr_target_keyword = picked_handoff_kw
+                st.session_state["vr_search_input"] = picked_handoff_kw
+                st.session_state.current_page = TOOL_VIDEO_RESEARCH
+                st.rerun()
+
+        with c_btn_cr:
+            st.write("")
+            st.write("")
+            if st.button("🎯 Competitor Research", use_container_width=True, key="kr_send_cr_btn", help="Analyze competitor channels and video angles for this topic."):
+                st.session_state.cr_last_query = picked_handoff_kw
+                st.session_state["cr_keyword_input"] = picked_handoff_kw
+                st.session_state.current_page = TOOL_COMPETITOR_RESEARCH
+                st.rerun()
+
+        with c_btn_seo:
+            st.write("")
+            st.write("")
+            if st.button("✨ SEO Generator", type="primary", use_container_width=True, key="kr_send_seo_btn", help="Draft optimized YouTube titles, description, and tags for this keyword."):
+                other_kws = [k for k in targeted_kws if k != picked_handoff_kw][:5]
+                sec_kw_str = ", ".join(other_kws) if other_kws else picked_handoff_kw
+                
+                st.session_state.seo_main_keyword = picked_handoff_kw
+                st.session_state["gen_main_kw_input"] = picked_handoff_kw
+                st.session_state.seo_secondary_keywords = sec_kw_str
+                st.session_state["gen_sec_kws_input"] = sec_kw_str
+                st.session_state.seo_topic_summary = f"Complete guide and tutorial for {picked_handoff_kw}"
+                st.session_state["gen_topic_summary_input"] = f"Complete guide and tutorial for {picked_handoff_kw}"
+                st.session_state.seo_target_viewer = active_channel.target_audience
+                st.session_state["gen_target_viewer_input"] = active_channel.target_audience
+                st.session_state["gen_format_radio"] = "Long-form (16:9)"
+                st.session_state.current_page = TOOL_SEO_GENERATOR
+                st.rerun()
 
     elif not results and st.session_state.kr_last_query:
-        st.warning(f"No autocomplete suggestions found for '{st.session_state.kr_last_query}'. Try a shorter or broader seed phrase.")
+        st.warning(f"No suggestions found for '{st.session_state.kr_last_query}'. Try a shorter or broader seed phrase.")
     else:
-        st.info(f"👆 Enter a seed keyword above to start discovering high-intent search queries for {active_channel.channel_name}.")
+        st.info(f"👆 Enter a seed keyword or click 'Find for This Channel' to start discovering high-intent search queries for {active_channel.channel_name}.")
 
     st.write("")
     st.markdown("---")
@@ -506,7 +651,7 @@ def render_keyword_research_tool() -> None:
     # ==============================================================================
     # RESTORED KEYWORD PATTERN GENERATOR (INTEGRATED INTO KEYWORD RESEARCH)
     # ==============================================================================
-    st.markdown("### 🧩 Keyword Pattern Generator (Candidate Video Ideas)")
+    st.markdown("### 🧩 Custom Keyword Pattern Generator (Advanced Creator Frameworks)")
     st.markdown(
         """
         <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-left: 4px solid #7C3AED; 
@@ -521,7 +666,7 @@ def render_keyword_research_tool() -> None:
 
     pat_seed_default = st.session_state.kr_last_query or active_channel.channel_niche.split("&")[0].strip()
 
-    with st.expander("🛠️ Configure & Generate Keyword Patterns", expanded=(len(st.session_state.kr_patterns) == 0)):
+    with st.expander("🛠️ Configure & Generate Custom Patterns", expanded=(len(st.session_state.kr_patterns) == 0)):
         c_pat1, c_pat2 = st.columns(2)
         with c_pat1:
             pat_seed = st.text_input(
@@ -561,7 +706,7 @@ def render_keyword_research_tool() -> None:
             with col_opt2:
                 max_patterns = st.slider("Max Patterns Limit", min_value=10, max_value=100, value=30, step=10, key="kr_pat_limit_slider")
 
-        if st.button("✨ Generate Keyword Patterns", type="primary", use_container_width=True, key="kr_pat_gen_btn"):
+        if st.button("✨ Generate Custom Keyword Patterns", type="primary", use_container_width=True, key="kr_pat_gen_btn"):
             if not pat_seed.strip():
                 st.warning("Please provide a seed topic for patterns.")
             elif not selected_categories:
@@ -581,10 +726,10 @@ def render_keyword_research_tool() -> None:
                 st.session_state.kr_patterns = generated_list
                 st.rerun()
 
-    # Display Generated Patterns
+    # Display Generated Custom Patterns
     patterns = st.session_state.kr_patterns
     if patterns:
-        st.markdown(f"##### 📋 Generated Pattern Candidates ({len(patterns)})")
+        st.markdown(f"##### 📋 Generated Custom Pattern Candidates ({len(patterns)})")
         st.caption("Select any pattern to run empirical Autocomplete research or send to SEO Generator:")
 
         pat_rows = []
@@ -628,6 +773,8 @@ def render_keyword_research_tool() -> None:
         with c_pact3:
             if st.button(f"✨ Send Top Pattern to SEO Generator", type="primary", use_container_width=True, key="kr_pat_send_seo_btn"):
                 st.session_state.seo_main_keyword = patterns[0].keyword
+                st.session_state["gen_main_kw_input"] = patterns[0].keyword
                 st.session_state.seo_secondary_keywords = ", ".join(p.keyword for p in patterns[1:5])
+                st.session_state["gen_sec_kws_input"] = ", ".join(p.keyword for p in patterns[1:5])
                 st.session_state.current_page = TOOL_SEO_GENERATOR
                 st.rerun()
