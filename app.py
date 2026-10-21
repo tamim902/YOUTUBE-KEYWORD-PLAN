@@ -402,6 +402,11 @@ def bootstrap_application() -> bool:
     try:
         config.ensure_directories()
         db_manager.init_db()
+        try:
+            from src.storage.backup_scheduler import backup_scheduler
+            backup_scheduler.start_background_daemon()
+        except Exception as b_ex:
+            logger.warning("Failed to start backup scheduler daemon: %s", b_ex)
         logger.info("Application bootstrap complete. Database and paths verified.")
         return True
     except Exception as exc:

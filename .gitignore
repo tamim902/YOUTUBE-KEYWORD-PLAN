@@ -41,6 +41,15 @@ build/
 *.env
 .env.*
 !.env.example
+credentials.json
+client_secret*.json
+client_secrets.json
+token.json
+google_drive_token.json
+.gdrive/
+*.zip
+data/backups/*.zip
+
 
 # OS files
 Thumbs.db
